@@ -1,0 +1,22 @@
+# Crate → spec module map. Read by Gate 0 (constitution Article I).
+#
+# Format:  <spec directory> = <crate> [<crate> ...]
+#
+# One spec may cover several crates — module 00 covers the four infrastructure crates,
+# because they share one set of rules and are meaningless apart. Every crate under crates/
+# must appear here, be listed in EXEMPT_CRATES (server, migration), or be registered in
+# specs/PLACEHOLDERS.md. A crate that is none of those fails Gate 0.
+
+00-foundation = core db api cache
+01-catalog    = catalog
+02-tenancy    = tenancy
+03-identity   = identity
+04-pricing    = pricing
+05-procurement = procurement
+06-inventory  = inventory
+07-sales      = sales
+08-customers  = customers
+09-workflows  = workflows
+10-sync       = sync
+11-reporting  = reporting
+12-jobs       = jobs

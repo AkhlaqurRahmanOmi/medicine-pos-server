@@ -1,0 +1,26 @@
+#!/bin/sh
+# Spec-driven development commit gate — constitution Article II, tier 4.
+#
+# Structural only: parses specs/**/tasks.md and executes no assertion. Fast enough to run
+# on every commit. Install once per clone with:
+#
+#     git config core.hooksPath .githooks
+#
+# Bypassable with `git commit --no-verify`, by design. This gate exists to stop an agent
+# ticking a box it cannot defend, not to stop a human who has decided otherwise.
+
+set -e
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "pre-commit: cargo not found on PATH, skipping the SDD gate" >&2
+    exit 0
+fi
+
+if ! cargo xtask verify --lint; then
+    echo "" >&2
+    echo "Commit blocked: a task is ticked with no VERIFY: line, or a crate exists without its spec." >&2
+    echo "See specs/CONSTITUTION.md, Article I and Article II." >&2
+    echo "" >&2
+    echo "Fix it, or commit with --no-verify if you have decided otherwise." >&2
+    exit 1
+fi

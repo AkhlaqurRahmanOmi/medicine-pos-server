@@ -1,0 +1,8 @@
+[package]
+name = "sdd-lint"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+description = "Structural parser for spec-driven development task files. Zero dependencies so build.rs stays fast."
+
+[dependencies]

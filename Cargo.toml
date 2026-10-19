@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "tools/*"]
+# `cargo build` builds the product, not the tooling. Reach the tooling through `cargo xtask`.
+default-members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+# ---- web ----
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.7", features = ["trace", "cors", "limit"] }
+
+# ---- database ----
+sea-orm = { version = "2.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "with-rust_decimal"] }
+sqlx = { version = "0.9", features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "chrono", "rust_decimal", "macros"] }
+
+# ---- types ----
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1.43", features = ["serde-with-float"] }
+validator = { version = "0.21", features = ["derive"] }
+
+# ---- errors and logging ----
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# ---- openapi ----
+utoipa = { version = "6", features = ["axum_extras", "uuid", "chrono", "decimal"] }
+utoipa-axum = "0.3"
+utoipa-scalar = { version = "0.4", features = ["axum"] }
+
+# ---- config ----
+figment = { version = "0.10", features = ["toml", "env"] }
+dotenvy = "0.15"
+
+# ---- auth ----
+jsonwebtoken = "11"
+argon2 = "0.6"
+
+# ---- cache and jobs ----
+deadpool-redis = { version = "0.23", features = ["rt_tokio_1"] }
+apalis = "1.0"
+apalis-redis = "1.0"

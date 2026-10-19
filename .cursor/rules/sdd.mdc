@@ -1,0 +1,48 @@
+---
+description: Spec-driven development rules for the Medicine POS backend
+alwaysApply: true
+---
+
+# Medicine POS Backend — Cursor Entry Point
+
+> **All engineering rules live in `specs/CONSTITUTION.md`.**
+> **All status lives in `specs/INDEX.md`.**
+>
+> This file is an entry point, not a rulebook. It restates no rules. If either of those files
+> disagrees with this one, they win. Read `specs/CONSTITUTION.md` before your first edit.
+
+## Where requirements live
+
+Product requirements and the decisions log are in **Notion**, not in this repository. This
+repo owns architecture, data model, API design, security and the module specs derived from
+them. Cite a decision by number — `[D-73]`. If a requirement is missing or contradictory,
+**ask**; do not invent one. Constitution Article III.
+
+## The five gates
+
+```
+Gate 1  SPEC.md + CONTRACT.md   Gate 2  plan.md   Gate 3  tasks.md
+Gate 4  implement               Gate 5  verify
+```
+
+**A task is ticked on a command that exits 0, never on intent.** No implementation may exist
+in `crates/<module>/` before that module's `SPEC.md` exists.
+
+## Commands
+
+```bash
+cargo xtask verify --lint        # structural, executes nothing
+cargo xtask verify --module 07   # run one module's assertions
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+## How the gate reaches you
+
+`crates/server/build.rs` runs the structural lint on every `cargo build`, `cargo check` and
+`cargo test`, and `.githooks/pre-commit` catches the same violation at commit time.
+`.cursor/hooks.json` adds the tick-time check where your runtime supports it.
+
+Rules tagged `[CLAUDE]` in the constitution do not bind you — follow the `[ALL]` equivalent
+stated alongside each one. In particular, run Gate 5 as a separate invocation that did not
+implement the tasks, and never write against a crate API from recall: check the version in
+`Cargo.toml` and read `cargo doc` or the installed source.

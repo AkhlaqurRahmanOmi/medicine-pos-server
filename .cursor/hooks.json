@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "cargo xtask verify --hook",
+        "timeout": 60
+      }
+    ]
+  }
+}
