@@ -108,7 +108,57 @@ moved its Redis backend into a separate `apalis-redis` crate. Recall is stale.
 `[CLAUDE]` equivalent: use the Context7 MCP server where it is connected. If it is not, the
 rule above applies unchanged.
 
-## 7. SOLID, in this codebase
+## 7. Concurrency
+
+The async rules. Three of the four are things the compiler will *not* catch for you.
+
+1. **Never hold a `std::sync::Mutex` across `.await`.** The guard is not `Send`, the future
+   stops being `Send`, and the fix people reach for — `tokio::sync::Mutex` — makes it compile
+   while turning a lock contention bug into a deadlock under load. If state must be shared
+   and awaited, redesign it; the connection pool is the only shared resource this server
+   needs. Caught by `clippy::await_holding_lock`, which is denied below.
+2. **`Arc`, never `Rc`.** `Rc` is not `Send`, so it fails inside a handler — but compiles fine
+   in a helper and then blocks that helper from ever being called from one.
+3. **No bare `tokio::spawn` for background work.** A spawned task that panics disappears with
+   no log and no failed request; the work simply never happened. Background work goes to
+   `apalis` `[D-99 stack]`, which records and retries. `tokio::spawn` is for request-scoped
+   fan-out that the handler then awaits.
+4. **Anything spawned is cancel-safe or it is not spawned.** A task interrupted mid-write must
+   leave the database consistent. In practice this means the write is in a transaction, which
+   it already is.
+
+**Variance:** avoid `&'a mut T` in public signatures — it is invariant and infects every
+caller's lifetimes. `Tx<'a>` is the only lifetime in a public API here.
+
+## 8. Coercion and conversions
+
+- **Take `&str`, not `&String`. Take `&[T]`, not `&Vec<T>`.** The caller may not own a `String`
+  or a `Vec`, and forcing them to allocate one is a cost paid per call for nothing.
+- **No `Deref` on newtypes.** `impl Deref for TenantId` leaks the inner `Uuid` into every
+  method call and silently undoes the type safety the newtype exists for. Write
+  `fn as_uuid(&self) -> Uuid` and make the conversion visible.
+- **No `Any` or `downcast` below `crates/server`.** Needing to downcast means the type was
+  wrong. Errors are matched on their enum variants. This is already true because `anyhow` is
+  binary-only — stated so it stays true.
+- Prefer `impl AsRef<str>` to a generic `Into<String>` in a public signature when you only
+  need to read.
+
+**Macros:** derives are fine — `serde`, `thiserror`, `utoipa`, `sea-orm`. `macro_rules!`
+sparingly. **No procedural macros of our own**; they double compile time and move errors to
+somewhere nobody can read them.
+
+### Assertable
+
+```bash
+# Rc never appears — Arc only
+VERIFY: test -z "$(grep -rlsE '\bRc<' crates/*/src)"
+# no bare tokio::spawn outside the binary
+VERIFY: test -z "$(grep -rls 'tokio::spawn' crates/{core,db,api,cache,infra}/src)"
+# no Deref impl on a newtype
+VERIFY: test -z "$(grep -rls 'impl Deref for' crates/core/src)"
+```
+
+## 9. SOLID, in this codebase
 
 Stated as what to do here, not as five words to agree with. Every one of these is a rule you
 can be shown to have broken.

@@ -158,3 +158,12 @@ every one here is `test -d <dir> && test -z "$(grep -ls …)"` — the directory
 the absence of a pattern means anything.
 
 When adding a task, copy an existing `VERIFY:` line and change the name. Do not shorten it.
+
+---
+
+## Phase 0: lint configuration (already done)
+
+- [x] Workspace lints deny `perf`, `redundant_clone`, `unwrap_used`, `await_holding_lock`, and forbid `unsafe_code`; `clippy.toml` exempts tests
+      VERIFY: grep -q "await_holding_lock" Cargo.toml && grep -q "allow-unwrap-in-tests" clippy.toml
+- [x] Every crate opts in to the workspace lints
+      VERIFY: test "$(grep -rls 'workspace = true' crates/*/Cargo.toml tools/*/Cargo.toml | wc -l)" -ge 3

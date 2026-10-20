@@ -1,0 +1,9 @@
+# `unwrap_used` and `expect_used` are denied in the workspace lints, which is right for
+# production code and unlivable in tests — a test that cannot unwrap is a test full of
+# ceremony. These two settings scope the ban to non-test code.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+# Error enums carry a user message and a log detail, so some variants are genuinely large.
+# Raise the threshold rather than boxing every variant.
+enum-variant-size-threshold = 256

@@ -7,6 +7,31 @@ default-members = ["crates/*"]
 [workspace.package]
 edition = "2021"
 
+# Enforced by the compiler rather than by reading a rule file. Each crate opts in with
+# `[lints] workspace = true`, which is itself assertable.
+[workspace.lints.clippy]
+# `perf` is on by default; denying it makes it a build failure rather than a warning.
+perf = { level = "deny", priority = -1 }
+# Not on by default — it lives in `nursery` — and it is the most valuable one here, because
+# Decimal and Uuid get cloned casually.
+redundant_clone = "deny"
+# A panic in a handler takes the whole request down with no useful message.
+unwrap_used = "deny"
+expect_used = "warn"
+# Concurrency rule 1: the compiler will not catch this one.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+# Money and ids: silent precision loss.
+cast_possible_truncation = "warn"
+cast_precision_loss = "warn"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
 [workspace.dependencies]
 # ---- web ----
 axum = "0.8"

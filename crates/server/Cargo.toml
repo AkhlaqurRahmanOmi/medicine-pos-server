@@ -15,3 +15,6 @@ tracing-subscriber.workspace = true
 
 [build-dependencies]
 sdd-lint = { path = "../../tools/sdd-lint" }
+
+[lints]
+workspace = true

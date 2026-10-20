@@ -105,7 +105,7 @@ fn repo_root() -> PathBuf {
     here.ancestors()
         .find(|p| p.join("specs").join("CONSTITUTION.md").exists())
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| env::current_dir().expect("cwd"))
+        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 fn verify(root: &Path, opts: &Opts) -> i32 {

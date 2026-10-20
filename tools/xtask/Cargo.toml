@@ -7,3 +7,6 @@ description = "Repository automation: the spec-driven development verifier."
 
 [dependencies]
 sdd-lint = { path = "../sdd-lint" }
+
+[lints]
+workspace = true
