@@ -7,7 +7,7 @@
 # must appear here, be listed in EXEMPT_CRATES (server, migration), or be registered in
 # specs/PLACEHOLDERS.md. A crate that is none of those fails Gate 0.
 
-00-foundation = core db api cache
+00-foundation = core db api cache infra
 01-catalog    = catalog
 02-tenancy    = tenancy
 03-identity   = identity

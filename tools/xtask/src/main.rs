@@ -453,7 +453,10 @@ fn status(root: &Path) -> i32 {
         let module = module.trim();
         let dir = specs.join(module);
 
-        let gate = |f: &str| dir.join(f).exists();
+        // `new` scaffolds all four files, so existence alone would report every fresh
+        // module as Gate 3. A file still carrying the template's placeholder heading has
+        // not been written.
+        let gate = |f: &str| is_filled(&dir.join(f));
         let phase = match (gate("SPEC.md"), gate("plan.md"), gate("tasks.md")) {
             (false, _, _) => "0 no spec",
             (true, false, _) => "1 spec",
@@ -462,11 +465,11 @@ fn status(root: &Path) -> i32 {
         };
 
         let (done, total) = match parse_tasks(&dir.join("tasks.md")) {
-            Ok(tasks) => {
+            Ok(tasks) if gate("tasks.md") => {
                 let leaves: Vec<_> = tasks.iter().filter(|t| t.leaf).collect();
                 (leaves.iter().filter(|t| t.ticked).count(), leaves.len())
             }
-            Err(_) => (0, 0),
+            _ => (0, 0),
         };
 
         let built = crates
@@ -485,6 +488,17 @@ fn status(root: &Path) -> i32 {
         );
     }
     0
+}
+
+/// A spec artifact counts as written only once the template's placeholder heading is gone.
+///
+/// Every template's H1 carries `[Module Title]`. Scaffolding creates all four files at once,
+/// so without this check a module would report Gate 3 the moment it was created.
+fn is_filled(path: &Path) -> bool {
+    match fs::read_to_string(path) {
+        Ok(text) => !text.contains("[Module Title]"),
+        Err(_) => false,
+    }
 }
 
 /// Regenerate `specs/DECISIONS.tsv` from the decisions table in `PRODUCT_SPEC.md`.

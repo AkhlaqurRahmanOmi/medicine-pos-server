@@ -15,7 +15,7 @@ is mechanically checkable: `crates/<name>` requires `specs/NN-<name>/SPEC.md`.
 
 | # | Module | Crate | Phase | Tasks | Status | Notes |
 |---|---|---|---|---|---|---|
-| **00** | Foundation | `core` `db` `api` `cache` | Phase 0 | 0/0 | `[NOT STARTED]` | Tenant context, `TenantTx` extractor, RLS policy pattern, error mapping, OpenAPI root |
+| **00** | Foundation | `core` `db` `api` `cache` `infra` | Phase 1 | 0/0 | `[SPEC DRAFT]` | Config, tenant context, `Tx` + set_config, error envelope, extractors, Redis, vendor adapters. 2 open questions |
 | **01** | Catalogue | `catalog` | Phase 0 | 0/0 | `[NOT STARTED]` | Central medicine catalogue (~30,000 products), submissions, duplicate review |
 | **02** | Tenancy | `tenancy` | Phase 0 | 0/0 | `[NOT STARTED]` | Pharmacies, branches, subscriptions, approval and suspension states |
 | **03** | Identity | `identity` | Phase 0 | 0/0 | `[NOT STARTED]` | Email login, roles, permissions, device registration, PIN switching |
