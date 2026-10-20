@@ -1,87 +1,47 @@
-# Medicine POS Backend — Agent Entry Point
+# Medicine POS Backend
 
-Multi-tenant pharmacy point-of-sale for Bangladesh, sold as a subscription. Rust workspace:
-axum, SeaORM over PostgreSQL with row-level security, Redis. Currency ৳ (BDT), timezone
-Asia/Dhaka. The mobile app and admin panel are separate repositories.
+Multi-tenant pharmacy POS for Bangladesh. Rust workspace: axum, SeaORM over PostgreSQL with
+row-level security, Redis. ৳ BDT, Asia/Dhaka. Mobile app and admin panel are separate repos.
 
----
+**Spec-driven. Read [`specs/CONSTITUTION.md`](specs/CONSTITUTION.md) (~1,400 tokens) before
+your first edit.** It is the only rulebook; this file restates none of it and records no
+status. Status is [`specs/INDEX.md`](specs/INDEX.md), or `cargo xtask status`.
 
-## Read this first
+## Two things that catch people out
 
-> **All engineering rules live in [`specs/CONSTITUTION.md`](specs/CONSTITUTION.md).**
-> **All status lives in [`specs/INDEX.md`](specs/INDEX.md).**
->
-> This file is an entry point, not a rulebook. It does not restate rules, and it is not where
-> progress is recorded. If either of those files disagrees with this one, they win.
+**A task is ticked on a command that exits 0, never on intent.** `cargo build` passing is
+necessary, never sufficient. Enforced on every compile by `crates/server/build.rs`.
 
-Read `specs/CONSTITUTION.md` before your first edit in a session.
-
-## Where requirements live
-
-Product requirements and the decisions log are in **Notion**, not in this repository. This
-repo owns architecture, data model, API design, security and the module specs derived from
-them. Cite a decision by number — `[D-73]` — and never restate its reasoning.
-
-**If a requirement is missing or contradictory, ask.** Do not infer it from the data model
-and do not invent it. Constitution Article III.
-
-## The five gates
-
-```
-Gate 1  SPEC.md + CONTRACT.md   what & why, tables owned, HTTP surface
-Gate 2  plan.md                 crate layout, migrations, types, commands, queries, test plan
-Gate 3  tasks.md                atomic tasks, each with a VERIFY: line
-Gate 4  implement               one task at a time, fmt + clippy + test clean
-Gate 5  verify                  every VERIFY: passes, by an agent that did not implement it
-```
-
-**A task is ticked on a command that exits 0, never on intent.** `cargo build` and
-`cargo clippy` passing is necessary, never sufficient.
+**Never open `PRODUCT_SPEC.md` or fetch Notion to check one decision** — that is ~33,000
+tokens for one line. Use `cargo xtask d 73`, which costs about 40.
 
 ## Commands
 
 ```bash
 cargo run -p server                      # the API on :8080
-cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test -p <crate>
+cargo xtask verify --module 07           # run a module's assertions
+cargo xtask d <number|text>              # look up a decision
+cargo xtask status                       # module phases, one line each
+cargo xtask new 07-sales                 # scaffold a spec directory
 ```
-
-```bash
-cargo xtask verify                       # every ticked assertion
-cargo xtask verify --module 07           # one module
-cargo xtask verify --all                 # probe unticked tasks: which are ready to tick?
-cargo xtask verify --strict              # also fail on a ticked task with no VERIFY: line
-cargo xtask new 07-sales                 # scaffold a spec directory from the templates
-```
-
-**`cargo build` is gated.** `crates/server/build.rs` runs the structural lint on every
-compile — it parses files and executes nothing. Tick a task without a `VERIFY:` line and the
-build fails until you add one. This is the enforcement floor for **every** agent: it needs no
-editor, no hook system and no git.
 
 ---
 
 ## Antigravity / Gemini routing
 
-> **How the gate reaches you.** The `build.rs` gate above is your enforcement point — it runs
-> on every `cargo build`, `cargo check` and `cargo test`, in any tool, and the `pre-commit`
-> hook catches the same violation at commit time. The hook files under `.claude/`, `.codex/`
-> and `.cursor/` are tool-specific and you can ignore them. Nothing about the rule is
-> tool-specific — only the speed of the feedback is.
+**How the gate reaches you.** `crates/server/build.rs` runs on every `cargo build`, `check`
+and `test`, in any tool, and `.githooks/pre-commit` catches the same violation at commit
+time. The hook files under `.claude/`, `.codex/` and `.cursor/` are tool-specific — ignore
+them. Nothing about the rule is tool-specific; only the speed of the feedback is.
 
-Rules tagged `[CLAUDE]` in the constitution do not bind you. Follow the `[ALL]` equivalent
-stated alongside each one. Specifically:
+Rules tagged `[CLAUDE]` do not bind you. Use the `[ALL]` equivalent:
 
 | Constitution rule | Your equivalent |
 |---|---|
 | Art. II.2 — a separate agent runs Gate 5 | Run `cargo xtask verify --module NN --strict` in a fresh session that did not implement the tasks. |
-| Art. V.6 — Context7 MCP | Read the installed source under `~/.cargo/registry`, or run `cargo doc --open -p <crate>`. Never write against a crate API from recall. |
-
----
-
-## Install the commit gate (once per clone)
+| `rules/rust.md` §6 — Context7 MCP | Read the installed source under `~/.cargo/registry`, or run `cargo doc --open -p <crate>`. Never write against a crate API from recall. |
 
 ```bash
-git config core.hooksPath .githooks
+git config core.hooksPath .githooks      # once per clone, enables the commit gate
 ```

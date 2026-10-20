@@ -42,6 +42,19 @@ fn main() {
             // failure merely being printed after the edit has already landed.
             std::process::exit(if opts.hook && code != 0 { 2 } else { code });
         }
+        Some("d") | Some("decision") => {
+            std::process::exit(decision(&root, &args[1..]));
+        }
+        Some("status") => {
+            std::process::exit(status(&root));
+        }
+        Some("sync-decisions") => {
+            let Some(src) = args.get(1) else {
+                eprintln!("usage: cargo xtask sync-decisions <path-to-PRODUCT_SPEC.md>");
+                std::process::exit(2);
+            };
+            std::process::exit(sync_decisions(&root, Path::new(src)));
+        }
         Some("new") => {
             let Some(name) = args.get(1) else {
                 eprintln!("usage: cargo xtask new <NN-module-name>");
@@ -53,7 +66,10 @@ fn main() {
             eprintln!(
                 "usage:\n  \
                  cargo xtask verify [--module NN] [--all] [--strict] [--lint]\n  \
-                 cargo xtask new <NN-module-name>"
+                 cargo xtask d <number|text>        look up a decision (~40 tokens, not 33k)\n  \
+                 cargo xtask status                 module phases, one line each\n  \
+                 cargo xtask new <NN-module-name>   scaffold a spec directory\n  \
+                 cargo xtask sync-decisions <path>  refresh specs/DECISIONS.tsv"
             );
             std::process::exit(2);
         }
@@ -368,6 +384,152 @@ fn run(cmd: &str, root: &Path) -> Outcome {
                 ok: false,
                 reason: if tail.is_empty() { code } else { format!("{code} — {tail}") },
             }
+        }
+    }
+}
+
+/// Print one decision, or the ones matching a search term.
+///
+/// Exists so an agent never opens `PRODUCT_SPEC.md` (~33,000 tokens) or fetches the Notion
+/// page to check a single line. One decision costs about 40 tokens this way.
+fn decision(root: &Path, args: &[String]) -> i32 {
+    let path = root.join("specs").join("DECISIONS.tsv");
+    let Ok(text) = fs::read_to_string(&path) else {
+        eprintln!("{} {} not found", paint("error:", RED), path.display());
+        return 1;
+    };
+
+    let rows: Vec<(&str, &str, &str)> = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .filter_map(|l| {
+            let mut f = l.splitn(3, '\t');
+            Some((f.next()?, f.next()?, f.next()?))
+        })
+        .collect();
+
+    let Some(query) = args.first() else {
+        println!("{} decisions. Give a number or a search term.", rows.len());
+        return 0;
+    };
+
+    // A bare number is an exact lookup; anything else is a case-insensitive search.
+    let matches: Vec<_> = if query.chars().all(|c| c.is_ascii_digit()) {
+        rows.iter().filter(|(n, _, _)| n == query).collect()
+    } else {
+        let needle = query.to_lowercase();
+        rows.iter()
+            .filter(|(_, t, d)| t.to_lowercase().contains(&needle) || d.to_lowercase().contains(&needle))
+            .collect()
+    };
+
+    if matches.is_empty() {
+        println!("No decision matches \"{query}\".");
+        return 1;
+    }
+    for (n, topic, body) in matches {
+        println!("{} {}\n   {body}", paint(&format!("[D-{n}]"), BOLD), paint(topic, DIM));
+    }
+    0
+}
+
+/// One line per module: phase, tasks done, and whether its spec exists.
+///
+/// Cheaper than reading INDEX.md, and it reports what is true on disk rather than what the
+/// index claims — the two drift, and the disk is right.
+fn status(root: &Path) -> i32 {
+    let specs = root.join("specs");
+    let Ok(map) = fs::read_to_string(specs.join("MODULES.map")) else {
+        eprintln!("{} specs/MODULES.map not found", paint("error:", RED));
+        return 1;
+    };
+
+    for line in map.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((module, crates)) = line.split_once('=') else { continue };
+        let module = module.trim();
+        let dir = specs.join(module);
+
+        let gate = |f: &str| dir.join(f).exists();
+        let phase = match (gate("SPEC.md"), gate("plan.md"), gate("tasks.md")) {
+            (false, _, _) => "0 no spec",
+            (true, false, _) => "1 spec",
+            (true, true, false) => "2 plan",
+            (true, true, true) => "3 tasks",
+        };
+
+        let (done, total) = match parse_tasks(&dir.join("tasks.md")) {
+            Ok(tasks) => {
+                let leaves: Vec<_> = tasks.iter().filter(|t| t.leaf).collect();
+                (leaves.iter().filter(|t| t.ticked).count(), leaves.len())
+            }
+            Err(_) => (0, 0),
+        };
+
+        let built = crates
+            .split_whitespace()
+            .filter(|c| root.join("crates").join(c).exists())
+            .count();
+
+        println!(
+            "{:<14} {:<10} {:>3}/{:<3} {} crate(s) built of {}",
+            module,
+            phase,
+            done,
+            total,
+            built,
+            crates.split_whitespace().count()
+        );
+    }
+    0
+}
+
+/// Regenerate `specs/DECISIONS.tsv` from the decisions table in `PRODUCT_SPEC.md`.
+fn sync_decisions(root: &Path, source: &Path) -> i32 {
+    let Ok(text) = fs::read_to_string(source) else {
+        eprintln!("{} cannot read {}", paint("error:", RED), source.display());
+        return 1;
+    };
+
+    let mut rows = Vec::new();
+    for line in text.lines() {
+        let t = line.trim();
+        if !t.starts_with('|') {
+            continue;
+        }
+        let cells: Vec<&str> = t.trim_matches('|').split('|').map(str::trim).collect();
+        if cells.len() < 3 || !cells[0].chars().all(|c| c.is_ascii_digit()) || cells[0].is_empty() {
+            continue;
+        }
+        rows.push(format!("{}\t{}\t{}", cells[0], cells[1], cells[2]));
+    }
+
+    if rows.is_empty() {
+        eprintln!("{} no decision rows found in {}", paint("error:", RED), source.display());
+        return 1;
+    }
+
+    let path = root.join("specs").join("DECISIONS.tsv");
+    let header = match fs::read_to_string(&path) {
+        Ok(existing) => existing
+            .lines()
+            .take_while(|l| l.starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Err(_) => "# Decisions log — local index. Notion is canonical.".into(),
+    };
+
+    match fs::write(&path, format!("{header}\n{}\n", rows.join("\n"))) {
+        Ok(()) => {
+            println!("{} {} decisions written to specs/DECISIONS.tsv", paint("OK", GREEN), rows.len());
+            0
+        }
+        Err(e) => {
+            eprintln!("{} {e}", paint("error:", RED));
+            1
         }
     }
 }

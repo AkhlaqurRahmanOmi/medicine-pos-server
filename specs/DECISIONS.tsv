@@ -1,0 +1,114 @@
+# Decisions log — local index. Notion is canonical; this is a compact mirror.
+#
+# Why it exists: PRODUCT_SPEC.md is ~33,000 tokens and the Notion page is comparable.
+# Reading either to check one decision is the single most expensive habit an agent can
+# have in this project. All 103 decisions cost ~1,800 tokens here, and one decision
+# costs ~40 tokens through `cargo xtask d <n>`.
+#
+# Cite as [D-73]. Never restate the reasoning — it lives in Notion, and a copy drifts.
+# Regenerate with: cargo xtask sync-decisions <path-to-PRODUCT_SPEC.md>
+#
+# ref	topic	decision
+1	Sell a pending catalogue submission?	Yes, visible only to the submitting tenant
+2	Rejected as duplicate?	Merge stock and sales onto the existing product
+3	Who may submit?	Owner and manager
+4	Batch choice at sale	Salesperson picks; earliest expiry pre-selected
+5	Near-expiry alert	Tenant-set, default 90 days
+6	Loose tablets	Yes — stock counted in pieces
+7	Selling at zero stock	Blocked; tenant may enable
+8	Batch and expiry for non-medicines	Optional
+9	Two batches on one invoice	Two separate lines
+10	New batch with higher MRP	Prompt only, never automatic
+11	VAT	Tenant setting, default included in price
+12	Discount limits	Per role
+13	Rounding	To nearest taka, tenant-configurable
+14	Role scope	Per branch
+15	Role templates	Shipped and editable
+16	Sales return	Cash refund and credit note; invoice required, override permission
+17	Return into expired batch	Accepted, marked non-sellable
+18	Subscription payment	Manual first, bKash later
+19	Plan limits	Deferred; model stays generic
+20	Lapsed subscription	Read-only after grace period
+21	Barcodes	Skipped in v1
+22	Medical text	Kept, online-only
+23	Apps	React Native (Expo) mobile app, offline selling required; web or desktop later
+24	Offline scope	Sales only
+25	Offline oversell	Accept and flag
+26	Offline duration	Hours
+27	Drug info offline	Online-only, cached once opened
+28	Other tills	Later
+29	Platforms	Cross-platform
+30	Devices per branch	Several at once
+31	Price per branch	One pharmacy-wide price; each branch may override it
+32	Blanket discount	Not in v1
+33	Discount cap unit	Percentage
+34	Separate pack price	No — always unit price × pieces
+35	VAT per product	Pharmacy default rate, overridable per product
+36	Branch transfer	Instant, no in-transit state
+37	Low-stock alert	Yes, reorder level per product per branch
+38	Change batch MRP after purchase	Super admin only, on the pharmacy's request
+39	Supplier payments	Matched to the bills they settle; unpicked money kept as an advance
+40	Purchase orders	Not in v1
+41	VAT on supplier bills	Optional, recorded for reporting only
+42	Voiding a sale	Same day, online, with a permission, if nothing returned
+43	Non-cash refund	Credit note with a code
+44	Payment methods	Set up per pharmacy, manual in v1, gateway-ready
+45	Due collections	Matched to the invoices they settle
+46	Offline credit over the limit	Accept and flag
+47	Payment terms	Days to pay per customer, with a pharmacy default
+48	Sync history retention	90 days
+49	Push notifications	Yes, in v1
+50	Audit log scope	Changes only, never reads
+51	Reports in v1	The 29 marked "Yes" in section 14: 25 for pharmacies, 4 for the platform
+52	Financial year	July to June
+53	Report export	CSV and PDF
+54	Backend language	Rust with axum
+55	ORM	SeaORM, entities generated from the database
+56	Module logic	Free functions, no DI container
+57	Cache, jobs, pub/sub	Redis
+58	Hosting	Own VPS with Docker Compose
+59	Year-one scale	Under 50 pharmacies; single instance, live reports
+60	Prescriptions and controlled drugs	Out of v1
+61	Migrations	SeaORM schema builder where it can; raw SQL for the rest
+62	Medex data licence	Risk accepted, launching with the imported catalogue
+63	Shared counter phone	Many staff, each with their own account; PIN to switch user on a signed-in device
+64	Typical offline time	About an hour a day
+65	Who enters deliveries	Anyone with the permission, usually the manager
+66	Printed receipts	Yes — thermal printer, works offline, header and footer per pharmacy
+67	Existing paper diary of dues	Entered as customer opening balances during onboarding
+68	Printer connections	Bluetooth and Wi-Fi ESC/POS thermal printers, 58 mm and 80 mm; no USB or OTG in v1
+69	VAT return output	Required — sales and purchase VAT registers plus a period return summary in the NBR layout; the system produces the figures, the accountant files them
+70	Availability target	99.5% a month for the API is acceptable, because selling keeps working offline while it is down
+71	Super admin panel	A React web app in its own repository, calling the same REST API
+72	Deployment	Built on the VPS from git, with the previous build kept so a rollback is a restart, not a rebuild
+73	Staging environment	None — tested locally; a migration is rehearsed against a restored backup before it is deployed
+74	Backup destination	Nightly dump to S3-compatible object storage, kept 30 days
+75	Staff login	Email and password. Phone is contact information only, never a login
+76	Password reset	By email only. No SMS in v1; an owner can set a temporary password
+77	Roles	Shipped roles (owner, manager, cashier) are locked; a pharmacy creates its own roles and assigns permissions to them
+78	Platform-only permissions	Marked on the permission and never shown in a pharmacy’s role editor
+79	Owner role	Locked, holds every permission, cannot be deleted
+80	Platform staff roles	A fixed list in code: super admin, reviewer, support, billing
+81	Free trial	Manual, case by case — no trial plan, no self-serve trial
+82	Signup	A new pharmacy needs platform approval before it can be used
+83	Suspension	Fully blocked, unlike a lapsed subscription which is read-only
+84	Our payment records on purge	Kept for accounting, anonymised
+85	API error text	The API returns stable codes plus English; each client owns its Bengali and English wording, so it works offline
+86	Rate limiting in v1	Login and password reset only, counted per email and per IP
+87	Health checks	Two endpoints: a shallow one for the proxy, a deep one for monitoring
+88	App version gate	Warn by default; a hard block only for a build that is unsafe to sync
+89	Plan limits	One plan in v1 with every limit unlimited; the machinery stays, so tiers are a row edit later
+90	App delivery	Direct APK only, no Play Store. iOS is therefore out of v1
+91	Domain layout	One domain, three subdomains: `api.`, `admin.`, and the root
+92	Error tracking	Sentry free tier on the backend and in the app
+93	Phone storage	The local database is encrypted (SQLCipher) with the key in the Android keystore
+94	APK authenticity	One download page on our domain, with the SHA-256 and signing fingerprint published
+95	Login rate limit	5 failures per email per 15 minutes, then a 15-minute lockout, plus a per-IP cap
+96	Backup encryption	The dump is encrypted with our own key before upload, and the key is not kept on the server
+97	Cross-module flows	A `workflows` crate above the modules; modules never call each other, nothing imports `workflows`
+98	Command/query split	`commands.rs` takes a transaction, `queries.rs` takes a connection — CQS by signature, no command bus, no separate read store
+99	Query safety	sqlx `query_as!` macros over SeaORM’s pool for reports and non-trivial queries
+100	Manager override	A manager approves on the cashier’s own phone with their PIN; the action proceeds and records who approved it
+101	App navigation	A bottom tab bar filtered by role: Sell, Stock, Customers, More. Hidden during an active sale
+102	Numerals	Western digits everywhere, including the Bengali interface and the receipt
+103	Interface	Light mode only, phone portrait only, Lucide icons
