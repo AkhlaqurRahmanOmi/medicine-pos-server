@@ -106,7 +106,29 @@ silent, total failures, so they live in the core:
 
 ---
 
-## Article V: Load on demand
+## Article V: Never run it for them `[ALL]`
+
+The database is not yours. An agent proposes the command; a human runs it.
+
+1. **Never run a migration** — `sea-orm-cli migrate up`, `down`, or any SQL that alters a
+   schema — against any database, including a local one, unless you were asked in this
+   session. Print the command instead.
+2. **`migrate fresh`, `refresh` and `reset` drop data. Never run them at all**, on any
+   database, however local it looks. A dev database holds the seed someone spent a day on.
+3. **Never regenerate entities unless asked.** `sea-orm-cli generate entity` overwrites every
+   file in the target directory, including anything not yet committed.
+4. **Never edit a migration that has been applied** anywhere but your own machine. Write a
+   new one. An edited migration is applied on one database and not another, and nothing will
+   tell you which.
+5. The direction is one-way: **hand-written SQL migration → database → generated entities.**
+   Never derive a migration from an entity, and never hand-edit a generated entity — it is
+   overwritten the next time anyone regenerates.
+
+Full detail in [`rules/rust.md`](rules/rust.md) §4.
+
+---
+
+## Article VI: Load on demand
 
 Read a rule file when you are about to do the thing it governs — not before.
 
