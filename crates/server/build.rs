@@ -6,7 +6,7 @@
 //!
 //! This is **structural only** — it parses files and executes nothing. Running assertions
 //! from here would re-enter the build without terminating, because many of them invoke
-//! `cargo test`. See the constitution, Article II, "Two constraints on enforcement".
+//! `cargo test`. See `specs/rules/enforcement.md`, "Two constraints".
 
 use std::path::{Path, PathBuf};
 
@@ -16,8 +16,20 @@ fn main() {
         return;
     };
 
-    // Re-run when a spec changes, not on every unrelated edit.
+    // Re-run when a spec or an entry point changes, not on every unrelated edit.
     println!("cargo::rerun-if-changed={}", root.join("specs").display());
+    println!(
+        "cargo::rerun-if-changed={}",
+        root.join("CLAUDE.md").display()
+    );
+    println!(
+        "cargo::rerun-if-changed={}",
+        root.join("AGENTS.md").display()
+    );
+    println!(
+        "cargo::rerun-if-changed={}",
+        root.join("GEMINI.md").display()
+    );
     println!("cargo::rerun-if-changed=build.rs");
 
     let mut failed = false;
@@ -29,6 +41,11 @@ fn main() {
 
     for v in sdd_lint::lint(&root) {
         println!("cargo::error=Article II — {v}");
+        failed = true;
+    }
+
+    for v in sdd_lint::citation_drift(&root) {
+        println!("cargo::error=Citation drift — {v}");
         failed = true;
     }
 

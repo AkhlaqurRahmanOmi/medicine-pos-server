@@ -41,6 +41,7 @@ tower-http = { version = "0.7", features = ["trace", "cors", "limit"] }
 
 # ---- database ----
 sea-orm = { version = "2.0", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "with-uuid", "with-chrono", "with-rust_decimal"] }
+sea-orm-migration = { version = "2.0", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls"] }
 sqlx = { version = "0.9", features = ["postgres", "runtime-tokio", "tls-rustls-ring", "uuid", "chrono", "rust_decimal", "macros"] }
 
 # ---- types ----

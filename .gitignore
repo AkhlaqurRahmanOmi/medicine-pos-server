@@ -1,3 +1,8 @@
 target/
 .env
 .sqlx/tmp/
+docs/
+# ...but the role provisioning SQL is infrastructure, not an export, and
+# compose.yaml mounts it. A missing source becomes a directory and the init no-ops.
+!docs/db/
+!docs/db/*.sql

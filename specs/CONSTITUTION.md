@@ -1,90 +1,59 @@
 # Medicine POS Backend — SDD Constitution (core)
 
-> **This file plus `specs/rules/` is the single source of truth for every engineering rule.**
-> The entry points — `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/sdd.mdc` — restate
-> nothing and point here. If a rule changes, it changes here only.
->
-> Status lives in [`INDEX.md`](INDEX.md), never in this file.
+> This file plus `specs/rules/` is the single source of truth for every engineering rule.
+> A rule changes here only. Status lives in [`INDEX.md`](INDEX.md), never in this file.
 
-**This core is deliberately short.** Read it once per session. Everything else loads only
-when you are about to do the thing it governs — see the table at the bottom.
+**The core holds only what must be true before you act** — everything else is a command or a
+rule file (Article VI). Read it once per session and load nothing else until you are about to
+do the thing it governs.
 
----
-
-## Article 0: Rule scope
-
-| Tag | Meaning |
-|---|---|
-| `[ALL]` | Binding on every agent. Written as a plain checklist so any tool can follow it. |
-| `[CLAUDE]` | Depends on Claude Code skills, subagents or hooks. Every other agent follows the `[ALL]` equivalent stated alongside it. |
-
-A rule that exists only as a Claude skill is not binding on Codex, Antigravity or Cursor.
+`[ALL]` binds every agent; `[CLAUDE]` needs Claude Code skills, subagents or hooks, and every
+other agent follows the `[ALL]` equivalent stated alongside it.
 
 ---
 
-## Article I: The 5-gate lifecycle `[ALL]`
+## Article I: Specs come first `[ALL]`
 
-Specs are the source of truth. Code is strictly downstream.
+Five gates: `SPEC.md` + `CONTRACT.md` → `plan.md` → `tasks.md` → implementation →
+verification. **Gate 0 is the one that binds before your first edit: no implementation in
+`crates/<module>/` before that module's `SPEC.md` exists.** `server` and `migration` are
+exempt; temporary exemptions live in [`PLACEHOLDERS.md`](PLACEHOLDERS.md).
 
-| Gate | Artifact | Exit condition |
-|---|---|---|
-| **0** | — | No implementation in `crates/<module>/` before that module's `SPEC.md` exists. |
-| **1** | `SPEC.md` + `CONTRACT.md` | What, why, tables owned, HTTP surface. |
-| **2** | `plan.md` | Crate layout, migrations, types, commands, queries, test plan. |
-| **3** | `tasks.md` | Atomic tasks, each carrying a `VERIFY:` command. |
-| **4** | Implementation | One task at a time. `fmt`, `clippy -D warnings`, `test` clean. |
-| **5** | Verification | Every `VERIFY:` passes, run by an agent that did not implement it. |
-
-`server` and `migration` are permanently exempt from Gate 0 — they are composition, not
-domain. Temporary exemptions are registered in [`PLACEHOLDERS.md`](PLACEHOLDERS.md).
+The gate table, the exemption mechanics and how a module advances are in
+[`rules/lifecycle.md`](rules/lifecycle.md).
 
 ---
 
 ## Article II: Gate 5 means executable proof `[ALL]`
 
-**A task may not be ticked on intent. It is ticked on a command that exits 0.**
-
-```markdown
-- [ ] Reject a sale line whose batch belongs to another tenant
-      VERIFY: cargo test -p sales rls_blocks_foreign_batch -- --exact
-```
+**A task may not be ticked on intent. It is ticked on a command that exits 0**, written on
+the task as `VERIFY: cargo test -p sales rls_blocks_foreign_batch -- --exact`.
 
 1. A checkbox with no `VERIFY:` line cannot be ticked.
-2. **The agent that implements a task may not be the agent that verifies it.** Gate 5 runs as
-   a separate pass reading only `tasks.md` and the repo — no session context, no memory of
+2. **The agent that implements a task may not be the agent that verifies it.** Gate 5 is a
+   separate pass reading only `tasks.md` and the repo — no session context, no memory of
    intent.
-3. `cargo build` and `cargo clippy` passing are necessary but **never sufficient**. Rust's
-   type system proves the shape of the program, not its agreement with the specification.
-4. If a `VERIFY:` command cannot be written for a task, the task is too vague — split it.
-5. **Prefer `cargo test` to `grep`.** A `grep` that asserts a behaviour is a false assertion.
+3. `cargo build` and `cargo clippy` passing are necessary, **never sufficient**: the type
+   system proves the shape of the program, not its agreement with the spec.
 
-```bash
-cargo xtask verify --lint            # structural, executes nothing
-cargo xtask verify --module 07       # run one module's assertions
-cargo xtask verify --strict          # also fail on a tick with no VERIFY: line
-```
-
-Enforced on everyone by `crates/server/build.rs` on every compile and by `.githooks/pre-commit`
-on every commit. Agent hooks add the same check at tick time. Details in
+Enforced by `crates/server/build.rs` on every compile and `.githooks/pre-commit` on every
+commit. Assertion strength, the runner's flags and the tiers:
 [`rules/enforcement.md`](rules/enforcement.md).
 
 ---
 
 ## Article III: Requirements live in Notion `[ALL]`
 
-This repository owns architecture, data model, API, security and module specs. Product
-requirements and the decisions log are in Notion.
+**Notion is the source of truth.** Fetch one named page by its id — `cargo xtask n <topic>`
+gives page and id, and flags the nine documents not written yet. Never search the workspace.
 
-**Never open `PRODUCT_SPEC.md` or fetch a Notion page to check one decision** — that is
-~33,000 tokens to read one line. Use the local index:
+**One decision is never worth a page fetch:** `cargo xtask d 73`, ~40 tokens against ~33,000.
+Fetch the page when the reasoning matters, when `d` has no row, or when more than one line is
+in question. **`docs/` is a stale export** — read it only when Notion lacks the thing or
+cannot be reached, and **Notion wins where they disagree**.
 
-```bash
-cargo xtask d 73           # one decision, ~40 tokens
-cargo xtask d "staging"    # search
-```
-
-Cite as `[D-73]`. Never restate the reasoning. **If a requirement is missing or
-contradictory, ask** — do not invent it. Details in [`rules/requirements.md`](rules/requirements.md).
+Cite as `[D-73]`, never restating the reasoning. **If a requirement is missing or
+contradictory, ask** — do not invent it. [`rules/requirements.md`](rules/requirements.md).
 
 ---
 
@@ -108,37 +77,49 @@ silent, total failures, so they live in the core:
 
 ## Article V: Never run it for them `[ALL]`
 
-The database is not yours. An agent proposes the command; a human runs it.
+Neither the database nor the history is yours. An agent proposes the command; a human runs
+it.
 
-1. **Never run a migration** — `sea-orm-cli migrate up`, `down`, or any SQL that alters a
-   schema — against any database, including a local one, unless you were asked in this
-   session. Print the command instead.
-2. **`migrate fresh`, `refresh` and `reset` drop data. Never run them at all**, on any
-   database, however local it looks. A dev database holds the seed someone spent a day on.
-3. **Never regenerate entities unless asked.** `sea-orm-cli generate entity` overwrites every
-   file in the target directory, including anything not yet committed.
-4. **Never edit a migration that has been applied** anywhere but your own machine. Write a
-   new one. An edited migration is applied on one database and not another, and nothing will
-   tell you which.
-5. The direction is one-way: **hand-written SQL migration → database → generated entities.**
-   Never derive a migration from an entity, and never hand-edit a generated entity — it is
-   overwritten the next time anyone regenerates.
+1. **Never run a migration** — `migrate up`, `down`, any schema-altering SQL — on any
+   database, local included, unless asked in this session. Print the command instead.
+2. **`migrate fresh`, `refresh`, `reset` drop data: never run them at all.** A dev database
+   holds the seed someone spent a day on.
+3. **Never regenerate entities unless asked**; it overwrites the whole target directory.
+4. **A migration applied anywhere but your machine is immutable.** Write a new one.
+5. One-way: **SQL migration → database → generated entities.** Never the reverse, and never
+   hand-edit a generated entity.
+6. **Never `git commit`, never `git push`.** Leave the work in the tree, say what changed, and
+   let a human read the diff and own it — for a one-line change too.
+7. **Never move history** — `rebase`, `merge`, `reset`, `cherry-pick`, `revert`, `stash`,
+   `tag`, `switch`/`checkout` — and **never `--no-verify`**. Reading is free.
 
 Full detail in [`rules/rust.md`](rules/rust.md) §4.
 
 ---
 
-## Article VI: Load on demand
+## Article VI: Commands, and loading on demand
 
-Read a rule file when you are about to do the thing it governs — not before.
+```bash
+cargo xtask status                       # module phases, one line each
+cargo xtask d <number|text>              # one decision, ~40 tokens
+cargo xtask n [topic]                    # the Notion page that holds it: name + id
+cargo xtask verify --module 07           # run a module's assertions
+cargo xtask verify --lint                # structural, executes nothing
+cargo xtask new 07-sales                 # scaffold a spec directory
+cargo run -p server                      # the API on :8080
+cargo clippy --workspace --all-targets -- -D warnings
+```
 
-| Before you… | Load | ~tokens |
-|---|---|---|
-| write a migration or any tenant-scoped query | [`rules/tenancy.md`](rules/tenancy.md) | 700 |
-| write code in a module crate | [`rules/rust.md`](rules/rust.md) | 700 |
-| draft or change a `SPEC.md` / `CONTRACT.md` | [`rules/requirements.md`](rules/requirements.md) | 700 |
-| change the verifier, a hook or the build gate | [`rules/enforcement.md`](rules/enforcement.md) | 800 |
-| run a command you do not recognise | [`../.specify/workflow/sdd-process.md`](../.specify/workflow/sdd-process.md) | 900 |
+Load a rule file when you are about to do the thing it governs — never at the start of a
+session, which is how a context window gets spent on rules instead of work.
 
-**Do not load all five at the start of a session.** That is how a context window gets spent
-on rules instead of work.
+All under `specs/rules/`, except the last:
+
+| Before you… | Load (~tokens) |
+|---|---|
+| start a module or advance a gate | [lifecycle](rules/lifecycle.md) (600) |
+| write a migration or tenant-scoped query | [tenancy](rules/tenancy.md) (700) |
+| write code in a module crate | [rust](rules/rust.md) (2,400) |
+| draft a `SPEC.md` / `CONTRACT.md` | [requirements](rules/requirements.md) (1,100) |
+| change the verifier, a hook or the gate | [enforcement](rules/enforcement.md) (900) |
+| run a command you do not recognise | [sdd-process](../.specify/workflow/sdd-process.md) (900) |

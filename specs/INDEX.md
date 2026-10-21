@@ -15,7 +15,7 @@ is mechanically checkable: `crates/<name>` requires `specs/NN-<name>/SPEC.md`.
 
 | # | Module | Crate | Phase | Tasks | Status | Notes |
 |---|---|---|---|---|---|---|
-| **00** | Foundation | `core` `db` `api` `cache` `infra` | Phase 4 | 2/47 | `[SPEC APPROVED]` | Config, tenant context, `Tx` + set_config, error envelope, extractors, Redis, vendor adapters. 2 open questions |
+| **00** | Foundation | `core` `db` `api` `cache` `infra` | Phase 5 | 48/48 | `[DONE]` | Config, tenant context, `Tx` + set_config, error envelope, extractors, Redis, vendor adapters. All 48 assertions passing. |
 | **01** | Catalogue | `catalog` | Phase 0 | 0/0 | `[NOT STARTED]` | Central medicine catalogue (~30,000 products), submissions, duplicate review |
 | **02** | Tenancy | `tenancy` | Phase 0 | 0/0 | `[NOT STARTED]` | Pharmacies, branches, subscriptions, approval and suspension states |
 | **03** | Identity | `identity` | Phase 0 | 0/0 | `[NOT STARTED]` | Email login, roles, permissions, device registration, PIN switching |
@@ -77,3 +77,4 @@ None yet — no tasks are ticked.
 | Date | What changed |
 |---|---|
 | 2026-10-19 | Workspace initialised. SDD scaffold installed: constitution, templates, runner, both enforcement gates, four agent entry points. |
+| 2026-10-21 | Module 00 (Foundation) completed: core, db, api, cache, infra crates implemented, verified 48/48 tasks via cargo xtask verify. |

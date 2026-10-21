@@ -18,110 +18,112 @@
 
 ---
 
-- [ ] **Phase 1: `core` — no database, no HTTP, no dependencies**
-  - [ ] Create the `core` crate with `ids.rs` — `TenantId`, `BranchId`, `UserId`, `DeviceId` as `#[repr(transparent)]` newtypes over `Uuid`, constructed v7
+- [x] **Phase 1: `core` — no database, no HTTP, no dependencies**
+  - [x] Create the `core` crate with `ids.rs` — `TenantId`, `BranchId`, `UserId`, `DeviceId` as `#[repr(transparent)]` newtypes over `Uuid`, constructed v7
         VERIFY: cargo test -p core ids_are_uuid_v7 2>&1 | grep -qE "^test .*ids_are_uuid_v7 \.\.\. ok$"
-  - [ ] `money.rs` — `Money(Decimal)` at scale 2 with checked arithmetic and `৳` Display
+  - [x] `money.rs` — `Money(Decimal)` at scale 2 with checked arithmetic and `৳` Display
         VERIFY: cargo test -p core money_keeps_two_decimal_places 2>&1 | grep -qE "^test .*money_keeps_two_decimal_places \.\.\. ok$"
-  - [ ] Prove no float can enter the money type
+  - [x] Prove no float can enter the money type
         VERIFY: test -d crates/core/src && test -z "$(grep -rlsE '\bf32\b|\bf64\b' crates/core/src)"
-  - [ ] `error.rs` — `ErrorCode` with the eleven variants, and `AppError` carrying a user message and a separate log detail
+  - [x] `error.rs` — `ErrorCode` with the eleven variants, and `AppError` carrying a user message and a separate log detail
         VERIFY: cargo test -p core every_error_code_maps_to_a_status 2>&1 | grep -qE "^test .*every_error_code_maps_to_a_status \.\.\. ok$"
-  - [ ] `config.rs` — figment, typed, parsed once; separate `database.url` (owner) and `database.app_url` (non-owner)
+  - [x] `config.rs` — figment, typed, parsed once; separate `database.url` (owner) and `database.app_url` (non-owner)
         VERIFY: cargo test -p core config_rejects_missing_database_url 2>&1 | grep -qE "^test .*config_rejects_missing_database_url \.\.\. ok$"
-  - [ ] Config rejects a malformed value rather than defaulting
+  - [x] Config rejects a malformed value rather than defaulting
         VERIFY: cargo test -p core config_rejects_malformed_port 2>&1 | grep -qE "^test .*config_rejects_malformed_port \.\.\. ok$"
-  - [ ] `context.rs`, `clock.rs`, `ports.rs`, `page.rs` — `TenantContext`, `trait Clock`, `trait MailSender`, `trait FileStorage`, `Page<T>`
+  - [x] `context.rs`, `clock.rs`, `ports.rs`, `page.rs` — `TenantContext`, `trait Clock`, `trait MailSender`, `trait FileStorage`, `Page<T>`
         VERIFY: cargo test -p core --lib 2>&1 | grep -qE "test result: ok\. [1-9]"
-  - [ ] `core` depends on nothing else in the workspace
+  - [x] `core` depends on nothing else in the workspace
         VERIFY: test -f crates/core/Cargo.toml && test -z "$(grep -ls 'path = \"\.\./' crates/core/Cargo.toml)"
 
-- [ ] **Phase 2: database bootstrap and the foundation migration**
-  - [ ] Write `docs/db/bootstrap.sql` creating `pos_app` and `pos_jobs` — **written, not run**
+- [x] **Phase 2: database bootstrap and the foundation migration**
+  - [x] Write `docs/db/bootstrap.sql` creating `pos_app` and `pos_jobs` — **written, not run**
         VERIFY: test -f docs/db/bootstrap.sql && grep -q "BYPASSRLS" docs/db/bootstrap.sql
-  - [ ] `pos_app` is created without `BYPASSRLS` and is not the schema owner
+  - [x] `compose.yaml` brings up Postgres and Redis — tools only, every value from `.env`, no credential in the file, no migration run from it
+        VERIFY: docker compose config -q && test -z "$(grep -nE '^[[:space:]]*[A-Z0-9_]*(PASSWORD|SECRET|ACCESS_KEY)[A-Z0-9_]*:[[:space:]]*[^$[:space:]]' compose.yaml)"
+  - [x] `pos_app` is created without `BYPASSRLS` and is not the schema owner
         VERIFY: cargo test -p migration bootstrap_app_role_has_no_bypassrls 2>&1 | grep -qE "^test .*bootstrap_app_role_has_no_bypassrls \.\.\. ok$"
-  - [ ] Write migration `m0001_foundation` with `app.current_tenant_id()` and `app.current_user_id()`, both `STABLE`
+  - [x] Write migration `m0001_foundation` with `app.current_tenant_id()` and `app.current_user_id()`, both `STABLE`
         VERIFY: grep -q "STABLE" crates/migration/src/m0001_foundation.rs
-  - [ ] Default grants give `pos_app` no `DELETE`
+  - [x] Default grants give `pos_app` no `DELETE`
         VERIFY: cargo test -p migration app_role_cannot_delete_by_default 2>&1 | grep -qE "^test .*app_role_cannot_delete_by_default \.\.\. ok$"
 
-- [ ] **Phase 3: `db` — the transaction that carries tenancy**
-  - [ ] `pool.rs` — `Db` connects as the **non-owner** role and exposes `pool()` for sqlx macros
+- [x] **Phase 3: `db` — the transaction that carries tenancy**
+  - [x] `pool.rs` — `Db` connects as the **non-owner** role and exposes `pool()` for sqlx macros
         VERIFY: cargo test -p db pool_connects_as_non_owner 2>&1 | grep -qE "^test .*pool_connects_as_non_owner \.\.\. ok$"
-  - [ ] `tx.rs` — `Tx::begin` sets `app.tenant_id` and `app.user_id` via `set_config(name, $1, true)`
+  - [x] `tx.rs` — `Tx::begin` sets `app.tenant_id` and `app.user_id` via `set_config(name, $1, true)`
         VERIFY: cargo test -p db tx_sets_tenant_id_from_bound_parameter 2>&1 | grep -qE "^test .*tx_sets_tenant_id_from_bound_parameter \.\.\. ok$"
-  - [ ] The setting is transaction-local and does not survive onto a reused pooled connection
+  - [x] The setting is transaction-local and does not survive onto a reused pooled connection
         VERIFY: cargo test -p db tx_setting_is_transaction_local 2>&1 | grep -qE "^test .*tx_setting_is_transaction_local \.\.\. ok$"
-  - [ ] A failed `set_config` aborts rather than continuing unset
+  - [x] A failed `set_config` aborts rather than continuing unset
         VERIFY: cargo test -p db tx_aborts_when_setting_fails 2>&1 | grep -qE "^test .*tx_aborts_when_setting_fails \.\.\. ok$"
-  - [ ] Commit on `Ok`, roll back on `Err`, without the caller saying so
+  - [x] Commit on `Ok`, roll back on `Err`, without the caller saying so
         VERIFY: cargo test -p db tx_commits_on_ok_and_rolls_back_on_err 2>&1 | grep -qE "^test .*tx_commits_on_ok_and_rolls_back_on_err \.\.\. ok$"
-  - [ ] `set_config` appears in exactly one file in the whole workspace
+  - [x] `set_config` appears in exactly one file in the whole workspace
         VERIFY: test "$(grep -rls 'set_config' crates/*/src | wc -l)" -eq 1
-  - [ ] `set_config` is never built with `format!`
+  - [x] `set_config` is never built with `format!`
         VERIFY: test -f crates/db/src/tx.rs && test -z "$(grep -rlsE 'format!.*set_config|set_config.*format!' crates)"
-  - [ ] `DbErr` maps to `AppError` in one place
+  - [x] `DbErr` maps to `AppError` in one place
         VERIFY: cargo test -p db db_error_maps_to_app_error 2>&1 | grep -qE "^test .*db_error_maps_to_app_error \.\.\. ok$"
 
-- [ ] **Phase 4: isolation proof — the canary**
-  - [ ] Test-only migration creating `_rls_canary` with `FORCE ROW LEVEL SECURITY` and the standard policy
+- [x] **Phase 4: isolation proof — the canary**
+  - [x] Test-only migration creating `_rls_canary` with `FORCE ROW LEVEL SECURITY` and the standard policy
         VERIFY: cargo test -p db canary_table_forces_rls 2>&1 | grep -qE "^test .*canary_table_forces_rls \.\.\. ok$"
-  - [ ] Tenant A cannot read tenant B's canary rows
+  - [x] Tenant A cannot read tenant B's canary rows
         VERIFY: cargo test -p db rls_canary_blocks_cross_tenant_read 2>&1 | grep -qE "^test .*rls_canary_blocks_cross_tenant_read \.\.\. ok$"
-  - [ ] A write naming tenant B's id while acting as tenant A fails
+  - [x] A write naming tenant B's id while acting as tenant A fails
         VERIFY: cargo test -p db rls_canary_blocks_cross_tenant_write 2>&1 | grep -qE "^test .*rls_canary_blocks_cross_tenant_write \.\.\. ok$"
-  - [ ] The canary test fails when the policy is dropped — proving it tests RLS and not nothing
+  - [x] The canary test fails when the policy is dropped — proving it tests RLS and not nothing
         VERIFY: cargo test -p db canary_detects_missing_policy 2>&1 | grep -qE "^test .*canary_detects_missing_policy \.\.\. ok$"
 
-- [ ] **Phase 5: `cache`**
-  - [ ] `pool.rs` and `keys.rs` — deadpool-redis with a configured key prefix
+- [x] **Phase 5: `cache`**
+  - [x] `pool.rs` and `keys.rs` — deadpool-redis with a configured key prefix
         VERIFY: cargo test -p cache keys_are_prefixed 2>&1 | grep -qE "^test .*keys_are_prefixed \.\.\. ok$"
-  - [ ] `rate_limit.rs` — fixed-window counter `[D-94]`
+  - [x] `rate_limit.rs` — fixed-window counter `[D-94]`
         VERIFY: cargo test -p cache rate_limit_blocks_after_limit 2>&1 | grep -qE "^test .*rate_limit_blocks_after_limit \.\.\. ok$"
-  - [ ] The window expires and the counter resets
+  - [x] The window expires and the counter resets
         VERIFY: cargo test -p cache rate_limit_window_expires 2>&1 | grep -qE "^test .*rate_limit_window_expires \.\.\. ok$"
-  - [ ] `idempotency.rs` — a guard keyed on a caller-supplied key
+  - [x] `idempotency.rs` — a guard keyed on a caller-supplied key
         VERIFY: cargo test -p cache idempotency_guard_rejects_replay 2>&1 | grep -qE "^test .*idempotency_guard_rejects_replay \.\.\. ok$"
 
-- [ ] **Phase 6: `api` — HTTP plumbing**
-  - [ ] `error.rs` — `impl IntoResponse for AppError`, exhaustive over `ErrorCode`
+- [x] **Phase 6: `api` — HTTP plumbing**
+  - [x] `error.rs` — `impl IntoResponse for AppError`, exhaustive over `ErrorCode`
         VERIFY: cargo test -p api every_error_code_has_a_response 2>&1 | grep -qE "^test .*every_error_code_has_a_response \.\.\. ok$"
-  - [ ] An internal error returns a generic message and a request id; the detail never reaches the body
+  - [x] An internal error returns a generic message and a request id; the detail never reaches the body
         VERIFY: cargo test -p api internal_error_hides_detail 2>&1 | grep -qE "^test .*internal_error_hides_detail \.\.\. ok$"
-  - [ ] `middleware.rs` — request id generated when absent, preserved when given
+  - [x] `middleware.rs` — request id generated when absent, preserved when given
         VERIFY: cargo test -p api request_id_generated_when_absent 2>&1 | grep -qE "^test .*request_id_generated_when_absent \.\.\. ok$"
-  - [ ] `extract.rs` — `TenantTx` extractor, so a handler without it cannot reach the database
+  - [x] `extract.rs` — `TenantTx` extractor, so a handler without it cannot reach the database
         VERIFY: cargo test -p api tenant_tx_extractor_opens_and_commits 2>&1 | grep -qE "^test .*tenant_tx_extractor_opens_and_commits \.\.\. ok$"
-  - [ ] `extract.rs` — `Pagination` with bounds, rejecting `page_size` over the cap
+  - [x] `extract.rs` — `Pagination` with bounds, rejecting `page_size` over the cap
         VERIFY: cargo test -p api pagination_rejects_oversized_page 2>&1 | grep -qE "^test .*pagination_rejects_oversized_page \.\.\. ok$"
-  - [ ] `permission.rs` — `require(slug)` route layer returning 403 when the slug is absent
+  - [x] `permission.rs` — `require(slug)` route layer returning 403 when the slug is absent
         VERIFY: cargo test -p api require_returns_forbidden_without_permission 2>&1 | grep -qE "^test .*require_returns_forbidden_without_permission \.\.\. ok$"
-  - [ ] `health.rs` — `/health` answers while the database is down
+  - [x] `health.rs` — `/health` answers while the database is down
         VERIFY: cargo test -p api health_answers_while_database_is_down 2>&1 | grep -qE "^test .*health_answers_while_database_is_down \.\.\. ok$"
-  - [ ] `/health/ready` returns 503 when a dependency is unreachable
+  - [x] `/health/ready` returns 503 when a dependency is unreachable
         VERIFY: cargo test -p api ready_returns_503_when_dependency_down 2>&1 | grep -qE "^test .*ready_returns_503_when_dependency_down \.\.\. ok$"
-  - [ ] `openapi.rs` — utoipa root that other crates attach to
+  - [x] `openapi.rs` — utoipa root that other crates attach to
         VERIFY: cargo test -p api openapi_document_builds 2>&1 | grep -qE "^test .*openapi_document_builds \.\.\. ok$"
-  - [ ] `api` holds no SQL
+  - [x] `api` holds no SQL
         VERIFY: test -d crates/api/src && test -z "$(grep -rlsE '\b(SELECT|INSERT|UPDATE|DELETE)\b' crates/api/src)"
 
-- [ ] **Phase 7: `infra` — vendor adapters, named by nobody else**
-  - [ ] `clock.rs` — `SystemClock`, plus a `FixedClock` for tests
+- [x] **Phase 7: `infra` — vendor adapters, named by nobody else**
+  - [x] `clock.rs` — `SystemClock`, plus a `FixedClock` for tests
         VERIFY: cargo test -p infra fixed_clock_is_deterministic 2>&1 | grep -qE "^test .*fixed_clock_is_deterministic \.\.\. ok$"
-  - [ ] `mail.rs` — `SmtpMailSender` implementing `core::MailSender`
+  - [x] `mail.rs` — `SmtpMailSender` implementing `core::MailSender`
         VERIFY: cargo test -p infra smtp_sender_builds_from_config 2>&1 | grep -qE "^test .*smtp_sender_builds_from_config \.\.\. ok$"
-  - [ ] `storage.rs` — S3-compatible `FileStorage` for payment slips and exports
+  - [x] `storage.rs` — S3-compatible `FileStorage` for payment slips and exports
         VERIFY: cargo test -p infra storage_builds_from_config 2>&1 | grep -qE "^test .*storage_builds_from_config \.\.\. ok$"
-  - [ ] No module crate depends on `infra` — only `server` and `jobs` may
+  - [x] No module crate depends on `infra` — only `server` and `jobs` may
         VERIFY: test -d crates/infra && test -z "$(grep -lsE '^infra' crates/{catalog,tenancy,identity,pricing,procurement,inventory,sales,customers,workflows,sync,reporting}/Cargo.toml)"
 
-- [ ] **Phase 8: wiring and Gate 5**
-  - [ ] `server` builds `AppState` from `Config` and mounts `/health` and `/openapi.json`
+- [x] **Phase 8: wiring and Gate 5**
+  - [x] `server` builds `AppState` from `Config` and mounts `/health` and `/openapi.json`
         VERIFY: cargo test -p server health_route_is_mounted 2>&1 | grep -qE "^test .*health_route_is_mounted \.\.\. ok$"
-  - [ ] Whole workspace is clean
+  - [x] Whole workspace is clean
         VERIFY: test -d crates/api/src && cargo clippy --workspace --all-targets -- -D warnings
-  - [ ] `cargo sqlx prepare` output committed so the server builds without a database
+  - [x] `cargo sqlx prepare` output committed so the server builds without a database
         VERIFY: cargo sqlx prepare --workspace --check
 
 ---

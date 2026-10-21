@@ -8,22 +8,12 @@ alwaysApply: true
 Multi-tenant pharmacy POS for Bangladesh. Rust: axum, SeaORM over PostgreSQL with row-level
 security, Redis.
 
-**Read `specs/CONSTITUTION.md` (~1,400 tokens) before your first edit.** It is the only
-rulebook; this file restates none of it. Status is `specs/INDEX.md`, or `cargo xtask status`.
-
-**A task is ticked on a command that exits 0, never on intent.** Enforced on every compile by
-`crates/server/build.rs` and at commit time by `.githooks/pre-commit`.
-
-**Never open `PRODUCT_SPEC.md` or fetch Notion to check one decision** — ~33,000 tokens for
-one line. Use `cargo xtask d 73`, which costs about 40.
-
-```bash
-cargo xtask verify --lint        # structural, executes nothing
-cargo xtask verify --module 07   # run one module's assertions
-cargo xtask d <number|text>      # look up a decision
-cargo clippy --workspace --all-targets -- -D warnings
-```
+**Read `specs/CONSTITUTION.md` (~1,300 tokens) before your first edit.** It is the only
+rulebook, it carries the commands, and this file restates nothing. Status is
+`specs/INDEX.md`, or `cargo xtask status`. Enforced by `crates/server/build.rs` on every
+compile and `.githooks/pre-commit` on every commit.
 
 Rules tagged `[CLAUDE]` do not bind you — use the `[ALL]` equivalent stated alongside each.
-In particular: run Gate 5 as a separate invocation that did not implement the tasks, and
-never write against a crate API from recall — check `Cargo.toml` and read `cargo doc`.
+In particular: run Gate 5 as a separate invocation that did not implement the tasks; never
+commit or push (Art. V.6, which no deny list enforces for you); and never write against a
+crate API from recall — check `Cargo.toml` and read `cargo doc`.

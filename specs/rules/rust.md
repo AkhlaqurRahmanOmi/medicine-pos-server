@@ -32,8 +32,9 @@
 
 - Reports and any non-trivial query use `sqlx::query_as!` over SeaORM's own pool — checked
   against a live database at compile time `[D-99]`.
-- Run `cargo sqlx prepare` and **commit `.sqlx/`** whenever a macro query changes, so the
-  server builds without a database.
+- Run `cargo sqlx prepare` whenever a macro query changes, so the server builds without a
+  database. `.sqlx/` is checked in — say that it changed and leave it in the tree for a human
+  to commit (Art. V.6).
 
 ### The one-way street
 
@@ -49,7 +50,8 @@ actually true.
   enables `FORCE ROW LEVEL SECURITY`, writes the policy, and sets the grants, in one file.
   A migration that creates a tenant-owned table without its policy is incomplete.
 - **Entities are generated**, never hand-written:
-  `sea-orm-cli generate entity -o crates/<module>/src/entity`. Commit the result.
+  `sea-orm-cli generate entity -o crates/<module>/src/entity`. The result is checked in —
+  leave it in the tree for a human to commit.
 - **Never hand-edit a generated entity.** It is overwritten the next time anyone regenerates,
   silently, and the edit returns as a bug weeks later. If the entity is wrong, the migration
   is wrong.
@@ -64,9 +66,13 @@ Constitution Article V, stated here in full because this is where it bites:
 | `sea-orm-cli migrate fresh` / `refresh` / `reset` | **Never. On any database.** They drop data |
 | `sea-orm-cli generate entity` | Only when asked. It overwrites every file in the target directory, committed or not |
 | Any `DROP`, `TRUNCATE`, or `ALTER … DROP COLUMN` outside a reviewed migration file | Never |
+| `git commit` / `git push` | **Never.** Leave the work in the tree; a human reads the diff and commits it |
+| `git rebase` / `merge` / `reset` / `cherry-pick` / `revert` / `stash` / `tag` / `switch` | **Never.** History is a human's to move |
+| `git commit --no-verify` | **Never.** The gate is a human's to bypass, never yours |
 
 Writing a migration file is not running it. Write it, say what it will do, and let a human
-apply it.
+apply it. The same shape holds for the repository: writing the code is yours, committing it
+is not.
 
 **A migration that has been applied anywhere but your own machine is immutable.** Fix it with
 a new migration. An edited one is applied on some databases and not others, and nothing in

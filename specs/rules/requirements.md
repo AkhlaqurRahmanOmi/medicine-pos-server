@@ -5,20 +5,56 @@
 
 ## Where requirements live
 
-Product requirements and the decisions log are in **Notion**. This repository owns
-architecture, data model, API design, security and the module specs derived from them.
-
-**Never read `PRODUCT_SPEC.md` or fetch a Notion page to check one decision.** The spec is
-~33,000 tokens and the Notion page is comparable. Use the local index instead:
+**Notion is the source of truth.** Fetch one named page by its id, from the local index:
 
 ```bash
-cargo xtask d 73          # one decision, ~40 tokens
-cargo xtask d "staging"   # search by topic or text
+cargo xtask n api          # name + id of the page that holds it
+cargo xtask n              # all ten, and the nine not written yet
 ```
 
-`specs/DECISIONS.tsv` holds all 103 decisions in ~1,800 tokens. Read the whole file only if
-you genuinely need to survey them; read Notion only when the decision's *reasoning* matters,
-which is rare and usually means you are about to propose changing it.
+The index is [`../NOTION.map`](../NOTION.map) — a TSV, read it directly only to survey it.
+Never search or crawl the workspace for a page the index already names, and never fetch a
+second page speculatively.
+
+This repository owns the specs derived from those pages — `SPEC.md`, `CONTRACT.md`, `plan.md`,
+`tasks.md` — plus the tenancy, engineering and enforcement rules in this directory.
+
+Order of lookup, cheapest first:
+
+1. **One decision, by number or topic** — ~40 tokens, from the cached table:
+
+   ```bash
+   cargo xtask d 73          # one decision
+   cargo xtask d "staging"   # search by topic or text
+   ```
+
+   `specs/DECISIONS.tsv` holds all 103 in ~1,800 tokens; read it whole only to survey them.
+
+2. **Anything larger than one line**, or a decision whose *reasoning* matters — fetch the one
+   Notion page that holds it. One page, never the project.
+
+3. **`docs/` only when Notion does not have it**, or cannot be reached. That directory is an
+   export — `PRODUCT_SPEC.md`, `RUST_STACK.md`, `DESIGN_BRIEF.md`, `SCREEN_SPECS.md` — and an
+   export drifts. **Where it disagrees with Notion, Notion wins.** Open
+   `docs/PRODUCT_SPEC.md` whole only to work through a whole section (§20 the data model,
+   §§16–19 the stack), and only after Notion has failed you.
+
+## When Notion is missing something
+
+A gap in Notion is not yours to fill locally.
+
+1. **Say what is missing and where you looked** — name the page id, not "Notion".
+2. If the export has it, use it to *propose* the answer, marked as coming from `docs/`, and
+   ask for it to be written into the Notion page. A requirement that lives only in an export
+   is one the next session will not find.
+3. If neither has it, it goes in the spec's Open Questions table and the module does not
+   advance past Gate 2. **Never invent it, and never infer it from the data model.**
+4. Cite the decision number once it exists — never the Notion page, never the export.
+
+If a decision is in Notion with no row in `specs/DECISIONS.tsv`, the cache is stale: say so.
+Refreshing it means re-exporting `docs/PRODUCT_SPEC.md` and running
+`cargo xtask sync-decisions docs/PRODUCT_SPEC.md`, which regenerates the file — never edit it
+by hand — and leaves a diff for a human to commit (Constitution Art. V.6).
 
 ## Drafting a spec
 
@@ -60,3 +96,6 @@ Never implement something other than what the spec says and leave the spec stand
 - A root-level file duplicating rules or status is deleted, not updated.
 - Finish a session by stating what passes, what fails, and what was left out. Never report a
   task complete because it was attempted.
+- **You do not commit the work, and you do not push it** — Constitution Art. V.6. Leave it
+  in the working tree, name the files you touched and the `VERIFY:` commands that pass, and
+  draft the commit message if you like. A human reads the diff and owns it from there.

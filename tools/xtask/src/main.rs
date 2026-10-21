@@ -16,7 +16,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use sdd_lint::{find_task_files, gate0, lint, parse_tasks, Task};
+use sdd_lint::{citation_drift, find_task_files, gate0, lint, parse_tasks, Task};
 
 const TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -45,6 +45,9 @@ fn main() {
         Some("d") | Some("decision") => {
             std::process::exit(decision(&root, &args[1..]));
         }
+        Some("n") | Some("notion") => {
+            std::process::exit(notion(&root, &args[1..]));
+        }
         Some("status") => {
             std::process::exit(status(&root));
         }
@@ -67,6 +70,7 @@ fn main() {
                 "usage:\n  \
                  cargo xtask verify [--module NN] [--all] [--strict] [--lint]\n  \
                  cargo xtask d <number|text>        look up a decision (~40 tokens, not 33k)\n  \
+                 cargo xtask n [topic]              the Notion page that holds it, name + id\n  \
                  cargo xtask status                 module phases, one line each\n  \
                  cargo xtask new <NN-module-name>   scaffold a spec directory\n  \
                  cargo xtask sync-decisions <path>  refresh specs/DECISIONS.tsv"
@@ -77,7 +81,13 @@ fn main() {
 }
 
 fn parse_opts(args: &[String]) -> Opts {
-    let mut opts = Opts { module: None, all: false, strict: false, lint_only: false, hook: false };
+    let mut opts = Opts {
+        module: None,
+        all: false,
+        strict: false,
+        lint_only: false,
+        hook: false,
+    };
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -112,11 +122,36 @@ fn verify(root: &Path, opts: &Opts) -> i32 {
     // Gate 0 runs first, always, before any assertion is considered.
     let gate0_violations = gate0(root);
     if !gate0_violations.is_empty() {
-        println!("{} Gate 0 — implementation without a spec\n", paint("FAIL", RED));
+        println!(
+            "{} Gate 0 — implementation without a spec\n",
+            paint("FAIL", RED)
+        );
         for v in &gate0_violations {
             println!("  {v}");
         }
         println!();
+        return 1;
+    }
+
+    // Citation drift: an `Art. V.6` that no longer resolves. Cheap, parses only.
+    let drift = citation_drift(root);
+    if !drift.is_empty() {
+        if opts.hook {
+            eprintln!("Blocked — a citation of specs/CONSTITUTION.md no longer resolves.\n");
+            for v in &drift {
+                eprintln!("  {v}");
+            }
+            eprintln!("\nFix the citation, or renumber the article back.");
+        } else {
+            println!(
+                "{} citation drift — a reference to the core does not resolve\n",
+                paint("FAIL", RED)
+            );
+            for v in &drift {
+                println!("  {v}");
+            }
+            println!();
+        }
         return 1;
     }
 
@@ -143,7 +178,10 @@ fn verify(root: &Path, opts: &Opts) -> i32 {
 
     if opts.lint_only {
         if !opts.hook {
-            println!("{} structure clean — every ticked task carries a VERIFY: line", paint("OK", GREEN));
+            println!(
+                "{} structure clean — every ticked task carries a VERIFY: line, every citation resolves",
+                paint("OK", GREEN)
+            );
         }
         return 0;
     }
@@ -151,8 +189,14 @@ fn verify(root: &Path, opts: &Opts) -> i32 {
     let files = task_files_for(root, opts.module.as_deref());
     if files.is_empty() {
         match &opts.module {
-            Some(m) => println!("{} no tasks.md found for module {m}", paint("warning:", YELLOW)),
-            None => println!("{} no tasks.md found under specs/ — nothing to verify yet", paint("note:", DIM)),
+            Some(m) => println!(
+                "{} no tasks.md found for module {m}",
+                paint("warning:", YELLOW)
+            ),
+            None => println!(
+                "{} no tasks.md found under specs/ — nothing to verify yet",
+                paint("note:", DIM)
+            ),
         }
         return 0;
     }
@@ -162,7 +206,9 @@ fn verify(root: &Path, opts: &Opts) -> i32 {
     let mut failures: Vec<String> = Vec::new();
 
     for file in &files {
-        let Ok(tasks) = parse_tasks(file) else { continue };
+        let Ok(tasks) = parse_tasks(file) else {
+            continue;
+        };
         let leaves: Vec<&Task> = tasks.iter().filter(|t| t.leaf).collect();
         if leaves.is_empty() {
             continue;
@@ -193,7 +239,10 @@ fn verify(root: &Path, opts: &Opts) -> i32 {
                 (Some(cmd), false) if opts.all => {
                     if run(cmd, root).ok {
                         probe_pass += 1;
-                        println!("  {} {title} — unticked, but its assertion holds", paint("ready", BLUE));
+                        println!(
+                            "  {} {title} — unticked, but its assertion holds",
+                            paint("ready", BLUE)
+                        );
                     } else {
                         probe_fail += 1;
                         println!("  {} {title}", paint("todo", DIM));
@@ -207,18 +256,31 @@ fn verify(root: &Path, opts: &Opts) -> i32 {
     println!("\n{}", "─".repeat(64));
     let mut parts = vec![
         format!("{} passed", paint(&pass.to_string(), GREEN)),
-        format!("{} failed", paint(&fail.to_string(), if fail > 0 { RED } else { DIM })),
+        format!(
+            "{} failed",
+            paint(&fail.to_string(), if fail > 0 { RED } else { DIM })
+        ),
     ];
     if skipped > 0 {
-        parts.push(format!("{} unverifiable", paint(&skipped.to_string(), YELLOW)));
+        parts.push(format!(
+            "{} unverifiable",
+            paint(&skipped.to_string(), YELLOW)
+        ));
     }
     if opts.all {
         parts.push(format!("{probe_pass} ready to tick, {probe_fail} not yet"));
     }
-    println!("{}  in {:.1}s", parts.join(" · "), started.elapsed().as_secs_f64());
+    println!(
+        "{}  in {:.1}s",
+        parts.join(" · "),
+        started.elapsed().as_secs_f64()
+    );
 
     if !failures.is_empty() {
-        println!("\n{} these completion claims are not true:", paint("Untrue:", RED));
+        println!(
+            "\n{} these completion claims are not true:",
+            paint("Untrue:", RED)
+        );
         for f in &failures {
             println!("  {f}");
         }
@@ -240,7 +302,9 @@ fn task_files_for(root: &Path, module: Option<&str>) -> Vec<PathBuf> {
             p.parent()
                 .and_then(|d| d.file_name())
                 .and_then(|n| n.to_str())
-                .is_some_and(|dir| dir == m || dir.starts_with(&format!("{m}-")) || dir.ends_with(&format!("-{m}")))
+                .is_some_and(|dir| {
+                    dir == m || dir.starts_with(&format!("{m}-")) || dir.ends_with(&format!("-{m}"))
+                })
         })
         .collect()
 }
@@ -275,7 +339,11 @@ fn bash() -> PathBuf {
                 .map(PathBuf::from);
 
             for root in roots {
-                for suffix in ["Git/bin/bash.exe", "Git/usr/bin/bash.exe", "Programs/Git/bin/bash.exe"] {
+                for suffix in [
+                    "Git/bin/bash.exe",
+                    "Git/usr/bin/bash.exe",
+                    "Programs/Git/bin/bash.exe",
+                ] {
                     let candidate = root.join(suffix);
                     if candidate.is_file() {
                         return candidate;
@@ -364,7 +432,10 @@ fn run(cmd: &str, root: &Path) -> Outcome {
                 thread::sleep(Duration::from_millis(40));
             }
             Err(e) => {
-                return Outcome { ok: false, reason: format!("wait failed: {e}") };
+                return Outcome {
+                    ok: false,
+                    reason: format!("wait failed: {e}"),
+                };
             }
         }
     };
@@ -375,14 +446,26 @@ fn run(cmd: &str, root: &Path) -> Outcome {
     let output: String = rx.iter().collect();
 
     match status {
-        None => Outcome { ok: false, reason: format!("timed out after {}s", TIMEOUT.as_secs()) },
-        Some(s) if s.success() => Outcome { ok: true, reason: String::new() },
+        None => Outcome {
+            ok: false,
+            reason: format!("timed out after {}s", TIMEOUT.as_secs()),
+        },
+        Some(s) if s.success() => Outcome {
+            ok: true,
+            reason: String::new(),
+        },
         Some(s) => {
-            let code = s.code().map_or_else(|| "signal".to_string(), |c| format!("exit {c}"));
+            let code = s
+                .code()
+                .map_or_else(|| "signal".to_string(), |c| format!("exit {c}"));
             let tail = last_line(&output);
             Outcome {
                 ok: false,
-                reason: if tail.is_empty() { code } else { format!("{code} — {tail}") },
+                reason: if tail.is_empty() {
+                    code
+                } else {
+                    format!("{code} — {tail}")
+                },
             }
         }
     }
@@ -419,7 +502,9 @@ fn decision(root: &Path, args: &[String]) -> i32 {
     } else {
         let needle = query.to_lowercase();
         rows.iter()
-            .filter(|(_, t, d)| t.to_lowercase().contains(&needle) || d.to_lowercase().contains(&needle))
+            .filter(|(_, t, d)| {
+                t.to_lowercase().contains(&needle) || d.to_lowercase().contains(&needle)
+            })
             .collect()
     };
 
@@ -428,7 +513,80 @@ fn decision(root: &Path, args: &[String]) -> i32 {
         return 1;
     }
     for (n, topic, body) in matches {
-        println!("{} {}\n   {body}", paint(&format!("[D-{n}]"), BOLD), paint(topic, DIM));
+        println!(
+            "{} {}\n   {body}",
+            paint(&format!("[D-{n}]"), BOLD),
+            paint(topic, DIM)
+        );
+    }
+    0
+}
+
+/// One Notion page, by topic. Constitution Article III.
+///
+/// The page ids used to live in the constitution as a ten-row table, which every session paid
+/// for whether or not it fetched anything. This is the same trade as `d`: a lookup costs ~20
+/// tokens, the table cost ~280 per session.
+fn notion(root: &Path, args: &[String]) -> i32 {
+    let path = root.join("specs").join("NOTION.map");
+    let Ok(text) = fs::read_to_string(&path) else {
+        eprintln!("{} {} not found", paint("error:", RED), path.display());
+        return 1;
+    };
+
+    let rows: Vec<(&str, &str, &str, &str)> = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .filter_map(|l| {
+            let mut f = l.splitn(4, '\t');
+            Some((f.next()?, f.next()?, f.next()?, f.next()?))
+        })
+        .collect();
+
+    let show = |(status, page, id, holds): &(&str, &str, &str, &str)| {
+        if *status == "written" {
+            println!("{}  {}\n   {}", paint(page, BOLD), id, paint(holds, DIM));
+        } else {
+            println!(
+                "{}  {}",
+                paint(page, BOLD),
+                paint("NOT WRITTEN — ask, do not infer", YELLOW)
+            );
+        }
+    };
+
+    let Some(query) = args.first() else {
+        for row in rows.iter().filter(|r| r.0 == "written") {
+            show(row);
+        }
+        let unwritten = rows.iter().filter(|r| r.0 != "written").count();
+        println!(
+            "\n{}",
+            paint(
+                &format!("{unwritten} more documents in the Notion index are not written yet — `cargo xtask n <topic>` names them."),
+                DIM
+            )
+        );
+        return 0;
+    };
+
+    // `data-model`, `data_model` and `data model` are the same query — an agent types
+    // whichever it is holding, and a near miss costs a page fetch.
+    let flatten = |s: &str| s.to_lowercase().replace(['-', '_'], " ");
+    let needle = flatten(query);
+    let matches: Vec<_> = rows
+        .iter()
+        .filter(|(_, page, _, holds)| {
+            flatten(page).contains(&needle) || flatten(holds).contains(&needle)
+        })
+        .collect();
+
+    if matches.is_empty() {
+        println!("No Notion page matches \"{query}\". `cargo xtask n` lists them all.");
+        return 1;
+    }
+    for row in matches {
+        show(row);
     }
     0
 }
@@ -449,7 +607,9 @@ fn status(root: &Path) -> i32 {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let Some((module, crates)) = line.split_once('=') else { continue };
+        let Some((module, crates)) = line.split_once('=') else {
+            continue;
+        };
         let module = module.trim();
         let dir = specs.join(module);
 
@@ -522,7 +682,11 @@ fn sync_decisions(root: &Path, source: &Path) -> i32 {
     }
 
     if rows.is_empty() {
-        eprintln!("{} no decision rows found in {}", paint("error:", RED), source.display());
+        eprintln!(
+            "{} no decision rows found in {}",
+            paint("error:", RED),
+            source.display()
+        );
         return 1;
     }
 
@@ -538,7 +702,11 @@ fn sync_decisions(root: &Path, source: &Path) -> i32 {
 
     match fs::write(&path, format!("{header}\n{}\n", rows.join("\n"))) {
         Ok(()) => {
-            println!("{} {} decisions written to specs/DECISIONS.tsv", paint("OK", GREEN), rows.len());
+            println!(
+                "{} {} decisions written to specs/DECISIONS.tsv",
+                paint("OK", GREEN),
+                rows.len()
+            );
             0
         }
         Err(e) => {
@@ -580,7 +748,10 @@ fn new_module(root: &Path, name: &str) -> i32 {
         }
     }
 
-    println!("{} specs/{name}/ created from the templates", paint("OK", GREEN));
+    println!(
+        "{} specs/{name}/ created from the templates",
+        paint("OK", GREEN)
+    );
     println!("\nNext:");
     println!("  1. map its crate(s) in specs/MODULES.map");
     println!("  2. add its row to specs/INDEX.md");
@@ -606,7 +777,11 @@ fn paint(s: &str, code: &str) -> String {
 }
 
 fn rel(root: &Path, p: &Path) -> String {
-    p.strip_prefix(root).unwrap_or(p).display().to_string().replace('\\', "/")
+    p.strip_prefix(root)
+        .unwrap_or(p)
+        .display()
+        .to_string()
+        .replace('\\', "/")
 }
 
 fn short(title: &str) -> String {

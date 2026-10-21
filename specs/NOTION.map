@@ -1,0 +1,25 @@
+# Notion page index — product requirements. Constitution Article III.
+#
+# Notion is the source of truth. `docs/` is a stale export, read only when Notion lacks the
+# thing or cannot be reached. Look up with `cargo xtask n <topic>`; `cargo xtask n` lists all.
+#
+# status	page	id for notion-fetch	holds
+written	Product Specification	3fd7424c4cba812a9180dad1161db7df	every feature, the 103 decisions, the data model
+written	Personas & User Journeys	3fd7424c4cba81ce823afe5861dd066e	who uses it, what a counter shift is like
+written	User Stories Backlog	3fd7424c4cba818e9902e1b995955a36	stories with acceptance criteria
+written	Non-Functional Requirements	3fd7424c4cba81febd4aecf353ede291	performance, offline, printers, logging, limits
+written	Architecture & Tech Stack	3fd7424c4cba81018870d78ce5f5248c	crate layout, axum/SeaORM/Redis, hosting
+written	Data Model & ERD	3fd7424c4cba81df874fd3dc2f95552d	8 contexts, ~60 tables, keys, append-only ledgers
+written	API Design Guide	3fd7424c4cba8110823ce2efeb03bfda	paths, envelopes, enums, errors, pagination
+written	Security Design & Threat Model	3fd7424c4cba81ee8bd0e546720bb7fa	tenancy, auth, the RLS rationale, threats
+written	UI/UX Screens & Flows	3fe7424c4cba8150b406d1a00d9d5505	screens and flows — the mobile app and admin panel
+written	Home — document index	3fd7424c4cba81e9944fdc7287204d3b	the document index and where the project stands
+unwritten	Vision, Market & Pricing	-	pricing, market sizing, positioning
+unwritten	Developer Setup Guide	-	local setup, toolchain, seeding
+unwritten	Coding Standards & Conventions	-	superseded locally by specs/rules/rust.md
+unwritten	Data Import Plan	-	catalogue import, ~30,000 products
+unwritten	Test Strategy & Test Cases	-	test levels, fixtures, coverage expectations
+unwritten	Deployment & Infrastructure Runbook	-	VPS, Docker Compose, release steps
+unwritten	Backup & Disaster Recovery Plan	-	nightly backups, restore drill
+unwritten	Monitoring & Incident Response	-	Sentry, alerts, on-call
+unwritten	Terms of Service & Privacy Policy	-	legal copy

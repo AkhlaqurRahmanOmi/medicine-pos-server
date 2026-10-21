@@ -4,8 +4,8 @@
 //! dependency added here is paid on every clean build of the binary.
 //!
 //! Nothing in this crate executes a command. Running assertions is `xtask`'s job, and the
-//! separation is what makes it safe to call this from `build.rs` — see constitution
-//! Article II, "Two constraints on enforcement".
+//! separation is what makes it safe to call this from `build.rs` — see
+//! `specs/rules/enforcement.md`, "Two constraints".
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -62,7 +62,11 @@ fn parse_task_line(line: &str) -> Option<(bool, String)> {
     let rest = rest.trim_start();
     let (mark, rest) = match rest.strip_prefix("[ ]") {
         Some(r) => (false, r),
-        None => (true, rest.strip_prefix("[x]").or_else(|| rest.strip_prefix("[X]"))?),
+        None => (
+            true,
+            rest.strip_prefix("[x]")
+                .or_else(|| rest.strip_prefix("[X]"))?,
+        ),
     };
     let title = rest.trim();
     if title.is_empty() {
@@ -167,7 +171,10 @@ pub fn lint(root: &Path) -> Vec<Violation> {
             });
             continue;
         };
-        for task in tasks.iter().filter(|t| t.leaf && t.ticked && t.verify.is_none()) {
+        for task in tasks
+            .iter()
+            .filter(|t| t.leaf && t.ticked && t.verify.is_none())
+        {
             violations.push(Violation {
                 file: task.file.clone(),
                 line: task.line,
@@ -276,12 +283,247 @@ fn registered_placeholders(specs: &Path) -> Vec<String> {
         if !line.starts_with('|') {
             continue;
         }
-        let first = line.trim_matches('|').split('|').next().unwrap_or("").trim();
+        let first = line
+            .trim_matches('|')
+            .split('|')
+            .next()
+            .unwrap_or("")
+            .trim();
         if let Some(name) = first.strip_prefix('`').and_then(|s| s.strip_suffix('`')) {
             names.push(name.to_string());
         }
     }
     names
+}
+
+// ---------------------------------------------------------------------------- citations
+//
+// The entry points and rule files cite the core by number — `Art. II.2`, `Article V.6`.
+// Renumbering an article silently invalidates every one of them, and a stale citation reads
+// as authoritative. This check resolves each one against the constitution as it is now.
+
+/// One article citation found in a file: `Article V`, `Art. V.6`, `Art. V.6–7`.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Citation {
+    pub label: String,
+    /// The numbered items referenced, if any. A range cites both of its ends.
+    pub items: Vec<u32>,
+}
+
+/// The articles the constitution has, each with its count of top-level numbered items.
+///
+/// Fenced blocks are skipped: a `1.` inside an example is not a rule.
+pub fn constitution_articles(text: &str) -> Vec<(String, usize)> {
+    let mut out: Vec<(String, usize)> = Vec::new();
+    let mut fenced = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            fenced = !fenced;
+            continue;
+        }
+        if fenced {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("## Article ") {
+            let label = rest.split(':').next().unwrap_or("").trim().to_string();
+            if !label.is_empty() {
+                out.push((label, 0));
+            }
+        } else if let Some(n) = numbered_item(line) {
+            if let Some(last) = out.last_mut() {
+                last.1 = last.1.max(n as usize);
+            }
+        }
+    }
+    out
+}
+
+/// `3. ` at column zero — a top-level numbered rule, not a nested or indented one.
+fn numbered_item(line: &str) -> Option<u32> {
+    let digits: String = line.chars().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty() || !line[digits.len()..].starts_with(". ") {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+/// `Article`, `Articles` or `Art.` followed by a space, not inside a longer word.
+fn keyword_at(chars: &[char], i: usize) -> Option<usize> {
+    if i > 0 && (chars[i - 1].is_alphanumeric() || chars[i - 1] == '_') {
+        return None;
+    }
+    for kw in ["Articles ", "Article ", "Art. "] {
+        let k: Vec<char> = kw.chars().collect();
+        if chars[i..].starts_with(&k) {
+            return Some(k.len());
+        }
+    }
+    None
+}
+
+/// A label (`V`, `III`, `0`) with optional `.6` and optional `–7` range end.
+fn citation_at(chars: &[char], start: usize) -> Option<(Citation, usize)> {
+    let mut i = start;
+    let label: String = chars[i..]
+        .iter()
+        .take_while(|c| matches!(c, 'I' | 'V' | 'X') || c.is_ascii_digit())
+        .collect();
+    if label.is_empty() {
+        return None;
+    }
+    let roman = label.chars().all(|c| matches!(c, 'I' | 'V' | 'X'));
+    if !roman && label.chars().any(|c| !c.is_ascii_digit()) {
+        return None;
+    }
+    i += label.chars().count();
+
+    let mut items = Vec::new();
+    if chars.get(i) == Some(&'.') && chars.get(i + 1).is_some_and(char::is_ascii_digit) {
+        i += 1;
+        let first: String = chars[i..]
+            .iter()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        i += first.chars().count();
+        if let Ok(n) = first.parse() {
+            items.push(n);
+        }
+        // `V.6–7`, `V.6-7`: both ends must resolve.
+        if matches!(chars.get(i), Some('–' | '-' | '—'))
+            && chars.get(i + 1).is_some_and(char::is_ascii_digit)
+        {
+            i += 1;
+            let second: String = chars[i..]
+                .iter()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            i += second.chars().count();
+            if let Ok(n) = second.parse() {
+                items.push(n);
+            }
+        }
+    }
+    Some((Citation { label, items }, i))
+}
+
+/// `Articles III and VI`, `Art. II.2, V.6` — one keyword, several citations.
+fn list_separator_at(chars: &[char], i: usize) -> Option<usize> {
+    for sep in [" and ", ", "] {
+        let s: Vec<char> = sep.chars().collect();
+        if chars[i..].starts_with(&s) {
+            return Some(i + s.len());
+        }
+    }
+    None
+}
+
+/// Every article citation on one line.
+pub fn citations_in_line(line: &str) -> Vec<Citation> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let Some(len) = keyword_at(&chars, i) else {
+            i += 1;
+            continue;
+        };
+        let mut j = i + len;
+        while let Some((cit, next)) = citation_at(&chars, j) {
+            out.push(cit);
+            j = next;
+            match list_separator_at(&chars, j) {
+                Some(k) => j = k,
+                None => break,
+            }
+        }
+        i = j.max(i + 1);
+    }
+    out
+}
+
+/// Constitution Article VI: a citation that no longer resolves is a rule nobody can read.
+///
+/// Executes nothing. Safe to call from `build.rs`.
+pub fn citation_drift(root: &Path) -> Vec<Violation> {
+    let constitution = root.join("specs").join("CONSTITUTION.md");
+    let Ok(text) = fs::read_to_string(&constitution) else {
+        return vec![Violation {
+            file: constitution,
+            line: 0,
+            message: "the constitution is missing — every citation is unresolvable".into(),
+        }];
+    };
+    let articles = constitution_articles(&text);
+
+    let mut out = Vec::new();
+    for file in citing_files(root) {
+        let Ok(body) = fs::read_to_string(&file) else {
+            continue;
+        };
+        for (n, line) in body.lines().enumerate() {
+            for cit in citations_in_line(line) {
+                let Some((_, items)) = articles.iter().find(|(l, _)| *l == cit.label) else {
+                    out.push(Violation {
+                        file: file.clone(),
+                        line: n + 1,
+                        message: format!(
+                            "cites Article {} — the constitution has no such article",
+                            cit.label
+                        ),
+                    });
+                    continue;
+                };
+                for item in &cit.items {
+                    if *item as usize > *items {
+                        out.push(Violation {
+                            file: file.clone(),
+                            line: n + 1,
+                            message: format!(
+                                "cites Article {}.{item}, but Article {} has {items} numbered items",
+                                cit.label, cit.label
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Files that may cite the core: rules, entry points, hooks and source comments.
+///
+/// `docs/` is excluded — it is a product export, not a rulebook, and "Article" there means
+/// something else entirely.
+fn citing_files(root: &Path) -> Vec<PathBuf> {
+    const SKIP: &[&str] = &["target", ".git", "docs", "node_modules"];
+    let mut out = Vec::new();
+    fn rec(dir: &Path, out: &mut Vec<PathBuf>, skip: &[&str]) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.is_dir() {
+                if !skip.contains(&name.as_str()) {
+                    rec(&path, out, skip);
+                }
+            } else {
+                let citing_ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| matches!(e, "md" | "mdc" | "rs"));
+                let in_hooks = dir.file_name().is_some_and(|d| d == ".githooks");
+                if citing_ext || in_hooks {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    rec(root, &mut out, SKIP);
+    out.sort();
+    out
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -299,7 +541,10 @@ mod tests {
 
     #[test]
     fn parses_tick_states() {
-        assert_eq!(parse_task_line("- [ ] do a thing"), Some((false, "do a thing".into())));
+        assert_eq!(
+            parse_task_line("- [ ] do a thing"),
+            Some((false, "do a thing".into()))
+        );
         assert_eq!(parse_task_line("  - [x] done"), Some((true, "done".into())));
         assert_eq!(parse_task_line("  - [X] done"), Some((true, "done".into())));
         assert_eq!(parse_task_line("not a task"), None);
@@ -308,9 +553,61 @@ mod tests {
 
     #[test]
     fn parses_verify_lines() {
-        assert_eq!(parse_verify_line("      VERIFY: cargo test -p x"), Some("cargo test -p x".into()));
+        assert_eq!(
+            parse_verify_line("      VERIFY: cargo test -p x"),
+            Some("cargo test -p x".into())
+        );
         assert_eq!(parse_verify_line("VERIFY:   "), None);
         assert_eq!(parse_verify_line("| `VERIFY: x` | no |"), None);
+    }
+
+    #[test]
+    fn reads_articles_and_their_item_counts() {
+        let text = "## Article II: Proof\n\n1. one\n2. two\n\n```markdown\n1. not a rule\n2. nor this\n3. nor this\n```\n\n## Article VI: Loading\n\nno items here\n";
+        let got = constitution_articles(text);
+        assert_eq!(got, vec![("II".to_string(), 2), ("VI".to_string(), 0)]);
+    }
+
+    #[test]
+    fn finds_citations_in_their_written_forms() {
+        let one = |s: &str| citations_in_line(s);
+        assert_eq!(
+            one("see Article V"),
+            vec![Citation {
+                label: "V".into(),
+                items: vec![]
+            }]
+        );
+        assert_eq!(
+            one("Art. II.2 — a separate agent"),
+            vec![Citation {
+                label: "II".into(),
+                items: vec![2]
+            }]
+        );
+        assert_eq!(
+            one("blocked by Article V.6–7, mechanically"),
+            vec![Citation {
+                label: "V".into(),
+                items: vec![6, 7]
+            }]
+        );
+        assert_eq!(
+            one("Referenced from Articles III and VI."),
+            vec![
+                Citation {
+                    label: "III".into(),
+                    items: vec![]
+                },
+                Citation {
+                    label: "VI".into(),
+                    items: vec![]
+                }
+            ]
+        );
+        // Not citations: a word that merely starts the same way, and prose about articles.
+        assert!(one("Articles of association").is_empty());
+        assert!(one("the Articled clerk").is_empty());
     }
 
     #[test]

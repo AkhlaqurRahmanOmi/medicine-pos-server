@@ -1,0 +1,71 @@
+# Local tooling for the Medicine POS backend — Postgres, Redis, object storage, mail sink.
+#
+# The server does NOT run here. `cargo run -p server` runs on the host and talks to these
+# published ports, which is why every port below is bound to localhost.
+#
+# Nothing is hardcoded: every value comes from `.env` (copy `.env.example`). A missing
+# credential fails the command with a message rather than starting an insecure container.
+#
+# Constitution Article V — this file declares containers; it never runs a migration.
+# `docker compose up` provisions the database roles from `docs/db/bootstrap.sql`, on the
+# volume's FIRST boot only. That is a human running compose, not an agent running SQL.
+# Schema migrations stay yours: `sea-orm-cli migrate up` is never run from here.
+
+name: ${COMPOSE_PROJECT_NAME:-medicine-pos}
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    restart: unless-stopped
+    environment:
+      # The image's superuser. `bootstrap.sql` then creates pos_owner, pos_app and pos_jobs,
+      # so this must NOT be pos_owner — the script would fail on an existing role and the
+      # container would never finish starting.
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set POSTGRES_SUPERUSER_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-medicine_pos}
+      TZ: ${TZ:-Asia/Dhaka}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Read-only, and only ever read once. Delete the volume to re-run it.
+      - ${POSTGRES_INIT_SQL:-./docs/db/bootstrap.sql}:/docker-entrypoint-initdb.d/01-bootstrap.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d ${POSTGRES_DB:-medicine_pos}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
+    restart: unless-stopped
+    # Append-only so a restart does not silently empty the job queue mid-development.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # Object storage and a mail sink belong here too — but only once something uses them.
+  #
+  # `trait FileStorage` wants an S3-compatible server (uploads, and the nightly dump [D-74]);
+  # `trait MailSender` wants a sink, because password reset is email-only [D-76] and cannot
+  # be exercised locally without one. Neither adapter exists yet, so running them would mean
+  # two idle containers and two credentials nothing reads. Add them with `infra/storage.rs`
+  # and `infra/mail.rs`, in the same commit as the code that connects to them.
+  #
+  #   mailpit:  axllent/mailpit — SMTP on 1025, web UI on 8025, ~30MB.
+  #   storage:  NOT minio — Docker Hub now gates `minio/minio` behind a login, so a fresh
+  #             clone cannot pull it. adobe/s3mock pulls, but is a ~400MB JVM app and did
+  #             not honour `initialBuckets` from the environment when tried on 2026-10-21;
+  #             whatever is chosen, verify the buckets actually appear before relying on it.
+
+volumes:
+  postgres-data:
+  redis-data:
