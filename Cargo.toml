@@ -68,8 +68,9 @@ figment = { version = "0.10", features = ["toml", "env"] }
 dotenvy = "0.15"
 
 # ---- auth ----
-jsonwebtoken = "11"
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 argon2 = "0.6"
+totp-rs = { version = "5", features = ["gen_secret"] }
 
 # ---- cache and jobs ----
 deadpool-redis = { version = "0.23", features = ["rt_tokio_1"] }

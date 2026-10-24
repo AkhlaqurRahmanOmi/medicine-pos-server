@@ -5,6 +5,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::keys::prefixed_key;
 use crate::pool::Cache;
 
+/// This guard's own 409 code. Conflict codes belong to the crate that raises them —
+/// `core` cannot know what an idempotency key is.
+pub const IDEMPOTENCY_KEY_IN_USE: &str = "idempotency_key_in_use";
+
 #[derive(Debug, Clone)]
 pub struct IdempotencyGuard {
     key: String,
@@ -38,7 +42,7 @@ impl Cache {
 
         if keys.contains(&full_key) {
             Err(AppError::new(
-                ErrorCode::Conflict,
+                ErrorCode::Conflict(IDEMPOTENCY_KEY_IN_USE),
                 "Request replay rejected: key already processed or in progress",
             ))
         } else {
@@ -67,6 +71,6 @@ mod tests {
             second_try.is_err(),
             "Replay request with duplicate key must be rejected"
         );
-        assert_eq!(second_try.unwrap_err().code, ErrorCode::Conflict);
+        assert_eq!(second_try.unwrap_err().code, ErrorCode::Conflict(IDEMPOTENCY_KEY_IN_USE));
     }
 }

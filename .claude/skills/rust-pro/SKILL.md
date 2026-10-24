@@ -1,0 +1,1 @@
+../../../specs/skills/rust-pro/SKILL.md

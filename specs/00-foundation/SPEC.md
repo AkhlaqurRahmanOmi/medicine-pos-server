@@ -133,10 +133,15 @@ its ten rules are actually *implemented* rather than merely obeyed:
 
 ## 5. Open questions
 
-| # | Question | Blocks | Raised |
-|---|---|---|---|
-| 1 | Does the response envelope match the API Design Guide in Notion? Theirs is `{success, message, data, meta:{requestId}}` — if the guide differs, the guide wins. | Gate 2 for `api` | 2026-10-20 |
-| 2 | Is `app.branch_ids` a Postgres array or a comma-joined string? `set_config` takes text, so it must be parsed in the policy — which form the policy uses is a data-model question. | Gate 2 for `db` | 2026-10-20 |
+None.
 
-**A spec with questions blocking Gate 2 does not advance.** Both are answerable from existing
-documents; neither needs a new decision.
+**Answered — Q1, 2026-10-21.** The envelope does *not* match the API Design Guide, and the
+guide wins: no success wrapper, cursor pagination with no total count, and a single
+`{error:{code, message, details, trace_id}}` shape with `lower_snake` codes. Recorded in
+[`CONTRACT.md`](CONTRACT.md) §2 — the guide is the source, and this spec does not restate it.
+
+**Answered — Q2, 2026-10-24.** The question is void: there is no `app.branch_ids` setting.
+`Tx` sets `app.tenant_id`, `app.user_id` and `app.is_platform` only, and no policy reads a
+branch list — branch scoping is an authorisation check in `api`, not a row-level one, carried
+by `branch_permissions` on `AuthUser` and enforced by `require_at`. Neither form was chosen
+because neither is needed; a future policy that does need branch ids raises a new question.

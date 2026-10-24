@@ -23,6 +23,8 @@ Rules tagged `[CLAUDE]` do not bind you. Use the `[ALL]` equivalent:
 |---|---|
 | Art. II.2 — a separate agent runs Gate 5 | Run `cargo xtask verify --module NN --strict` in a fresh session that did not implement the tasks. |
 | Art. V.6 — an agent never commits | Leave the work in the tree and say what changed. Nothing blocks the command for you; the rule is the same. |
+| Art. VI — `[CLAUDE]` invokes the `rust-pro` skill before module-crate code | Read [`specs/skills/rust-pro/SKILL.md`](specs/skills/rust-pro/SKILL.md) directly, alongside `rules/rust.md` — it is the same file the Claude skill points at. Borrowed Rust expertise, not a rule: start at its *House overrides* table, because the house rules win. |
+| Art. VI — `[CLAUDE]` spawns the `backend-architect` subagent for Gates 1–2 | Read [`specs/agents/backend-architect.md`](specs/agents/backend-architect.md) and adopt it as the role for a **design-only** pass in a fresh invocation, alongside `rules/requirements.md` — the same file the Claude agent points at. It describes this architecture only: start at its *Not in this system* table, and never let it verify its own output. |
 | `rules/rust.md` §6 — Context7 MCP | Read the installed source under `~/.cargo/registry`, or `cargo doc --open -p <crate>`. Never write against a crate API from recall. |
 | Art. III — Notion MCP | `cargo xtask n <topic>` gives the page id. Without a connector, ask for the page rather than working from `docs/` silently. |
 

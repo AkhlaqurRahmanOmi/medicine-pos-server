@@ -1,0 +1,37 @@
+[package]
+name = "identity"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+pos_core = { package = "core", path = "../core" }
+db = { path = "../db" }
+api = { path = "../api" }
+cache = { path = "../cache" }
+
+sea-orm.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+tracing.workspace = true
+axum.workspace = true
+
+argon2.workspace = true
+jsonwebtoken.workspace = true
+totp-rs.workspace = true
+sha2 = "0.10"
+deadpool-redis.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tower.workspace = true
+sea-orm = { workspace = true, features = ["mock"] }
+
+[lints]
+workspace = true

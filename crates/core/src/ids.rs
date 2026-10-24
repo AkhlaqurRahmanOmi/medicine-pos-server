@@ -60,6 +60,17 @@ define_id!(TenantId, "Unique identifier for a tenant pharmacy.");
 define_id!(BranchId, "Unique identifier for a pharmacy branch.");
 define_id!(UserId, "Unique identifier for an authenticated user.");
 define_id!(DeviceId, "Unique identifier for a POS device.");
+define_id!(RoleId, "Unique identifier for a role.");
+define_id!(SessionId, "Unique identifier for an authenticated session.");
+
+define_id!(CompanyId, "Unique identifier for a pharmaceutical company/manufacturer.");
+define_id!(GenericId, "Unique identifier for an active ingredient generic.");
+define_id!(ProductId, "Unique identifier for a medicine or non-medicine product.");
+define_id!(IngredientId, "Unique identifier for a chemical ingredient molecule.");
+define_id!(TherapeuticClassId, "Unique identifier for a therapeutic class.");
+define_id!(DosageFormId, "Unique identifier for a dosage form.");
+define_id!(PackUnitId, "Unique identifier for a packaging unit.");
+define_id!(IssueReportId, "Unique identifier for a catalogue issue report.");
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -115,5 +126,16 @@ mod tests {
         assert_eq!(branch_id.as_uuid().get_version_num(), 7);
         assert_eq!(user_id.as_uuid().get_version_num(), 7);
         assert_eq!(device_id.as_uuid().get_version_num(), 7);
+    }
+
+    #[test]
+    fn the_new_identity_ids_are_uuid_v7() {
+        let role_id = RoleId::new_v7();
+        let device_id = DeviceId::new_v7();
+        let session_id = SessionId::new_v7();
+
+        assert_eq!(role_id.as_uuid().get_version_num(), 7);
+        assert_eq!(device_id.as_uuid().get_version_num(), 7);
+        assert_eq!(session_id.as_uuid().get_version_num(), 7);
     }
 }

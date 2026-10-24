@@ -28,6 +28,29 @@ pub struct RedisConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthConfig {
     pub jwt_secret: String,
+    /// How long an access token is accepted for. `[D-75]`'s "about 15 minutes".
+    #[serde(default = "default_access_token_ttl_secs")]
+    pub access_token_ttl_secs: i64,
+    /// How long a refresh token — and so a row in `sessions` — survives.
+    /// Module 03 Q1, answered 2026-10-24: configuration, not a constant.
+    #[serde(default = "default_refresh_token_ttl_secs")]
+    pub refresh_token_ttl_secs: i64,
+    /// How long a platform impersonation session stays open.
+    /// Module 03 Q3, answered 2026-10-24: configuration, not a constant.
+    #[serde(default = "default_impersonation_ttl_secs")]
+    pub impersonation_ttl_secs: i64,
+}
+
+const fn default_access_token_ttl_secs() -> i64 {
+    900
+}
+
+const fn default_refresh_token_ttl_secs() -> i64 {
+    30 * 24 * 60 * 60
+}
+
+const fn default_impersonation_ttl_secs() -> i64 {
+    60 * 60
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +75,9 @@ impl Config {
                         "APP_DATABASE_URL",
                         "REDIS_URL",
                         "JWT_SECRET",
+                        "ACCESS_TOKEN_TTL_SECS",
+                        "REFRESH_TOKEN_TTL_SECS",
+                        "IMPERSONATION_TTL_SECS",
                     ])
                     .map(|k| match k.as_str() {
                         "APP_PORT" => "server.port".into(),
@@ -60,6 +86,9 @@ impl Config {
                         "APP_DATABASE_URL" => "database.app_url".into(),
                         "REDIS_URL" => "redis.url".into(),
                         "JWT_SECRET" => "auth.jwt_secret".into(),
+                        "ACCESS_TOKEN_TTL_SECS" => "auth.access_token_ttl_secs".into(),
+                        "REFRESH_TOKEN_TTL_SECS" => "auth.refresh_token_ttl_secs".into(),
+                        "IMPERSONATION_TTL_SECS" => "auth.impersonation_ttl_secs".into(),
                         _ => k.into(),
                     }),
             )
@@ -106,6 +135,35 @@ mod tests {
 
         let res = Config::from_figment(&figment);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn token_lifetimes_default_when_unset_and_take_the_value_given() {
+        let base = Figment::new()
+            .merge(("database.url", "postgres://pos_owner@localhost:5432/pos"))
+            .merge(("database.app_url", "postgres://pos_app@localhost:5432/pos"))
+            .merge(("server.port", 8080))
+            .merge(("server.env", "test"))
+            .merge(("redis.url", "redis://localhost:6379"))
+            .merge(("auth.jwt_secret", "secret"));
+
+        // Absent: the shipped defaults, which are what module 03 had hardcoded.
+        let defaults = Config::from_figment(&base).expect("config without lifetimes parses");
+        assert_eq!(defaults.auth.access_token_ttl_secs, 900);
+        assert_eq!(defaults.auth.refresh_token_ttl_secs, 30 * 24 * 60 * 60);
+        assert_eq!(defaults.auth.impersonation_ttl_secs, 60 * 60);
+
+        // Present: the deployment's values win, which is the whole point of Q1 and Q3.
+        let set = Config::from_figment(
+            &base
+                .merge(("auth.access_token_ttl_secs", 60))
+                .merge(("auth.refresh_token_ttl_secs", 7 * 24 * 60 * 60))
+                .merge(("auth.impersonation_ttl_secs", 120)),
+        )
+        .expect("config with lifetimes parses");
+        assert_eq!(set.auth.access_token_ttl_secs, 60);
+        assert_eq!(set.auth.refresh_token_ttl_secs, 7 * 24 * 60 * 60);
+        assert_eq!(set.auth.impersonation_ttl_secs, 120);
     }
 
     #[test]

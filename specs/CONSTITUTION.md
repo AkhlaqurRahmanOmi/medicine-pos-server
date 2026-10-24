@@ -113,13 +113,30 @@ cargo clippy --workspace --all-targets -- -D warnings
 Load a rule file when you are about to do the thing it governs — never at the start of a
 session, which is how a context window gets spent on rules instead of work.
 
-All under `specs/rules/`, except the last:
+All under `specs/rules/`, except the two borrowed files and the last row:
 
 | Before you… | Load (~tokens) |
 |---|---|
-| start a module or advance a gate | [lifecycle](rules/lifecycle.md) (600) |
+| start a module or advance a gate, or file an optional task | [lifecycle](rules/lifecycle.md) (1,100) |
 | write a migration or tenant-scoped query | [tenancy](rules/tenancy.md) (700) |
-| write code in a module crate | [rust](rules/rust.md) (2,400) |
-| draft a `SPEC.md` / `CONTRACT.md` | [requirements](rules/requirements.md) (1,100) |
+| write code in a module crate | [rust](rules/rust.md) (2,400) **and** [rust-pro](skills/rust-pro/SKILL.md) (2,900) |
+| draft a `SPEC.md` / `CONTRACT.md` | [requirements](rules/requirements.md) (1,100) **and** [backend-architect](agents/backend-architect.md) (2,300) |
 | change the verifier, a hook or the gate | [enforcement](rules/enforcement.md) (900) |
 | run a command you do not recognise | [sdd-process](../.specify/workflow/sdd-process.md) (900) |
+
+**Two of those are borrowed, and neither is a rule.**
+[`skills/rust-pro/SKILL.md`](skills/rust-pro/SKILL.md) is a third-party Rust playbook kept as
+it was shipped, with a *House overrides* table listing every point where it is wrong here.
+[`agents/backend-architect.md`](agents/backend-architect.md) started as a third-party design
+role and was narrowed to this architecture — one deployable, crates as contexts, one Postgres
+with RLS — so its *Not in this system* table is the equivalent list. Both are reference only:
+where either disagrees with this constitution or `rules/`, **they win**. Never add a crate, a
+broker, a macro or an `unsafe` block because a vendored prompt suggests it — it lands in
+[`DECISIONS.tsv`](DECISIONS.tsv) as a question first.
+
+`[CLAUDE]` both are installed natively — `.claude/skills/rust-pro/SKILL.md` and
+`.claude/agents/backend-architect.md`, each a symlink to the file above — so the skill is
+invoked by name and the role is spawned as a subagent. Every other agent reads the `specs/`
+path and adopts it in a fresh invocation. **Spawning the architect is not delegating the
+gate:** it drafts, a human reads, and Gate 5 is still a different agent again (Art. II.2).
+

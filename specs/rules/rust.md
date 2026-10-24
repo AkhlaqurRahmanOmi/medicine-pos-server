@@ -2,6 +2,10 @@
 
 > Load this before writing code in a module crate. Referenced from
 > [`../CONSTITUTION.md`](../CONSTITUTION.md) Article V.
+>
+> Load [`../skills/rust-pro/SKILL.md`](../skills/rust-pro/SKILL.md) with it — vendored
+> third-party Rust expertise, reference only. **This file wins**, and that skill's *House
+> overrides* table lists every point where the two differ.
 
 ## 1. Module boundaries
 

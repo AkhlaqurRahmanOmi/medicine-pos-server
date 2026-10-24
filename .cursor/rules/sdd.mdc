@@ -13,6 +13,14 @@ rulebook, it carries the commands, and this file restates nothing. Status is
 `specs/INDEX.md`, or `cargo xtask status`. Enforced by `crates/server/build.rs` on every
 compile and `.githooks/pre-commit` on every commit.
 
+Before writing code in a module crate, read `specs/rules/rust.md` **and**
+`specs/skills/rust-pro/SKILL.md` (Art. VI) — the second is borrowed Rust expertise, not a
+rule, so read its *House overrides* table first: `rust.md` wins wherever they differ.
+
+Before drafting a `SPEC.md` or `CONTRACT.md`, read `specs/rules/requirements.md` **and**
+`specs/agents/backend-architect.md` — the design role for that gate, reference only, written
+against this architecture and no other. It drafts; it never implements and never verifies.
+
 Rules tagged `[CLAUDE]` do not bind you — use the `[ALL]` equivalent stated alongside each.
 In particular: run Gate 5 as a separate invocation that did not implement the tasks; never
 commit or push (Art. V.6, which no deny list enforces for you); and never write against a

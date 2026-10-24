@@ -20,6 +20,11 @@ impl MigrationTrait for Migration {
                 SELECT NULLIF(current_setting('app.user_id', true), '')::uuid;
             $$ LANGUAGE sql STABLE;
 
+            -- Schema app access for tenancy functions
+            GRANT USAGE ON SCHEMA app TO pos_app, pos_jobs;
+            GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO pos_app, pos_jobs;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT EXECUTE ON FUNCTIONS TO pos_app, pos_jobs;
+
             -- Default grants: pos_app gets SELECT, INSERT, UPDATE on future tables in public, never DELETE
             GRANT USAGE ON SCHEMA public TO pos_app;
             GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO pos_app;

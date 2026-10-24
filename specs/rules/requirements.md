@@ -2,6 +2,10 @@
 
 > Load this at Gate 1, when drafting or changing a `SPEC.md` or `CONTRACT.md`.
 > Referenced from [`../CONSTITUTION.md`](../CONSTITUTION.md) Articles III and VI.
+>
+> [`../agents/backend-architect.md`](../agents/backend-architect.md) is the design role for
+> this gate — reference only, narrowed to this architecture. **This file wins**, and that
+> role's *Not in this system* table is what it will refuse to design.
 
 ## Where requirements live
 

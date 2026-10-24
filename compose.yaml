@@ -16,6 +16,9 @@ name: ${COMPOSE_PROJECT_NAME:-medicine-pos}
 services:
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
+    # Named by role, not by replica. Derived from the project name above, so renaming the
+    # project in `.env` still renames both containers.
+    container_name: ${COMPOSE_PROJECT_NAME:-medicine-pos}-db
     restart: unless-stopped
     environment:
       # The image's superuser. `bootstrap.sql` then creates pos_owner, pos_app and pos_jobs,
@@ -39,6 +42,7 @@ services:
 
   redis:
     image: ${REDIS_IMAGE:-redis:7.4-alpine}
+    container_name: ${COMPOSE_PROJECT_NAME:-medicine-pos}-cache
     restart: unless-stopped
     # Append-only so a restart does not silently empty the job queue mid-development.
     command: ["redis-server", "--appendonly", "yes"]

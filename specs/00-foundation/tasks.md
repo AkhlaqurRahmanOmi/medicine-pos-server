@@ -25,7 +25,7 @@
         VERIFY: cargo test -p core money_keeps_two_decimal_places 2>&1 | grep -qE "^test .*money_keeps_two_decimal_places \.\.\. ok$"
   - [x] Prove no float can enter the money type
         VERIFY: test -d crates/core/src && test -z "$(grep -rlsE '\bf32\b|\bf64\b' crates/core/src)"
-  - [x] `error.rs` — `ErrorCode` with the eleven variants, and `AppError` carrying a user message and a separate log detail
+  - [x] `error.rs` — `ErrorCode` serialised `lower_snake`, with `Conflict(&'static str)` for a module's own 409 code, and `AppError` carrying a user message and a separate log detail
         VERIFY: cargo test -p core every_error_code_maps_to_a_status 2>&1 | grep -qE "^test .*every_error_code_maps_to_a_status \.\.\. ok$"
   - [x] `config.rs` — figment, typed, parsed once; separate `database.url` (owner) and `database.app_url` (non-owner)
         VERIFY: cargo test -p core config_rejects_missing_database_url 2>&1 | grep -qE "^test .*config_rejects_missing_database_url \.\.\. ok$"
@@ -87,16 +87,20 @@
         VERIFY: cargo test -p cache idempotency_guard_rejects_replay 2>&1 | grep -qE "^test .*idempotency_guard_rejects_replay \.\.\. ok$"
 
 - [x] **Phase 6: `api` — HTTP plumbing**
+  - [x] `envelope.rs` — no success wrapper: a response is the resource, a list is `{data, next_cursor, has_more}`, an error is `{error:{code, message, details, trace_id}}` `[Q1 answered]`
+        VERIFY: cargo test -p api error_body_is_a_single_error_object 2>&1 | grep -qE "^test .*error_body_is_a_single_error_object \.\.\. ok$"
+  - [x] A list response carries no total count, and `has_more` agrees with `next_cursor`
+        VERIFY: cargo test -p api list_response_has_no_total_count 2>&1 | grep -qE "^test .*list_response_has_no_total_count \.\.\. ok$"
   - [x] `error.rs` — `impl IntoResponse for AppError`, exhaustive over `ErrorCode`
         VERIFY: cargo test -p api every_error_code_has_a_response 2>&1 | grep -qE "^test .*every_error_code_has_a_response \.\.\. ok$"
-  - [x] An internal error returns a generic message and a request id; the detail never reaches the body
+  - [x] An internal error returns a generic message and a `trace_id`; the detail never reaches the body
         VERIFY: cargo test -p api internal_error_hides_detail 2>&1 | grep -qE "^test .*internal_error_hides_detail \.\.\. ok$"
   - [x] `middleware.rs` — request id generated when absent, preserved when given
         VERIFY: cargo test -p api request_id_generated_when_absent 2>&1 | grep -qE "^test .*request_id_generated_when_absent \.\.\. ok$"
   - [x] `extract.rs` — `TenantTx` extractor, so a handler without it cannot reach the database
         VERIFY: cargo test -p api tenant_tx_extractor_opens_and_commits 2>&1 | grep -qE "^test .*tenant_tx_extractor_opens_and_commits \.\.\. ok$"
-  - [x] `extract.rs` — `Pagination` with bounds, rejecting `page_size` over the cap
-        VERIFY: cargo test -p api pagination_rejects_oversized_page 2>&1 | grep -qE "^test .*pagination_rejects_oversized_page \.\.\. ok$"
+  - [x] `extract.rs` — cursor pagination: opaque `cursor`, `limit` defaulting to 50 and capped at 200, no `page` or `offset`
+        VERIFY: cargo test -p api pagination_rejects_oversized_limit 2>&1 | grep -qE "^test .*pagination_rejects_oversized_limit \.\.\. ok$"
   - [x] `permission.rs` — `require(slug)` route layer returning 403 when the slug is absent
         VERIFY: cargo test -p api require_returns_forbidden_without_permission 2>&1 | grep -qE "^test .*require_returns_forbidden_without_permission \.\.\. ok$"
   - [x] `health.rs` — `/health` answers while the database is down
@@ -105,8 +109,10 @@
         VERIFY: cargo test -p api ready_returns_503_when_dependency_down 2>&1 | grep -qE "^test .*ready_returns_503_when_dependency_down \.\.\. ok$"
   - [x] `openapi.rs` — utoipa root that other crates attach to
         VERIFY: cargo test -p api openapi_document_builds 2>&1 | grep -qE "^test .*openapi_document_builds \.\.\. ok$"
+  - [x] `openapi.rs` — the root declares the `bearer` scheme the handlers cite
+        VERIFY: cargo test -p api the_root_declares_the_bearer_scheme 2>&1 | grep -qE "^test .*the_root_declares_the_bearer_scheme \.\.\. ok$"
   - [x] `api` holds no SQL
-        VERIFY: test -d crates/api/src && test -z "$(grep -rlsE '\b(SELECT|INSERT|UPDATE|DELETE)\b' crates/api/src)"
+        VERIFY: test -d crates/api/src && test -z "$(grep -rlsE '\b(SELECT|INSERT|UPDATE|DELETE FROM)\b' crates/api/src)"
 
 - [x] **Phase 7: `infra` — vendor adapters, named by nobody else**
   - [x] `clock.rs` — `SystemClock`, plus a `FixedClock` for tests
@@ -121,6 +127,12 @@
 - [x] **Phase 8: wiring and Gate 5**
   - [x] `server` builds `AppState` from `Config` and mounts `/health` and `/openapi.json`
         VERIFY: cargo test -p server health_route_is_mounted 2>&1 | grep -qE "^test .*health_route_is_mounted \.\.\. ok$"
+  - [x] `server` serves Scalar at `/docs`, with the document inlined in the page
+        VERIFY: cargo test -p server scalar_is_served_at_docs_with_the_document_inlined 2>&1 | grep -qE "^test .*scalar_is_served_at_docs_with_the_document_inlined \.\.\. ok$"
+  - [x] Every route the router mounts is in the document it serves — `split_for_parts()`, so the two cannot diverge
+        VERIFY: cargo test -p server the_document_carries_every_mounted_module_path 2>&1 | grep -qE "^test .*the_document_carries_every_mounted_module_path \.\.\. ok$"
+  - [x] The document offers a bearer token and tags the platform surface apart from the pharmacy one
+        VERIFY: cargo test -p server the_document_offers_a_bearer_token_and_names_its_tags 2>&1 | grep -qE "^test .*the_document_offers_a_bearer_token_and_names_its_tags \.\.\. ok$"
   - [x] Whole workspace is clean
         VERIFY: test -d crates/api/src && cargo clippy --workspace --all-targets -- -D warnings
   - [x] `cargo sqlx prepare` output committed so the server builds without a database

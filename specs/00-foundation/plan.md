@@ -101,10 +101,14 @@ pub struct Money(Decimal);   // scale 2, checked arithmetic, Display as "৳1,23
 pub struct TenantContext { tenant_id: TenantId, user_id: UserId, branch_ids: Vec<BranchId> }
 pub struct RequestContext { request_id: RequestId, now: DateTime<Utc> }
 
-// core/error.rs
-pub enum ErrorCode { BadRequest, ValidationFailed, Unauthorized, Forbidden, NotFound,
-                     Conflict, RateLimited, TenantSuspended, SubscriptionLapsed,
-                     AppVersionUnsupported, Internal }
+// core/error.rs — serialised lower_snake, per the API Design Guide (Q1, answered)
+pub enum ErrorCode { BadRequest, ValidationFailed, UnknownField,
+                     InvalidToken, TokenExpired, DeviceRevoked,
+                     PermissionDenied, BranchNotAllowed, SubscriptionReadOnly,
+                     TenantSuspended, TenantPendingApproval,
+                     NotFound, Conflict(&'static str), FileTooLarge, AppTooOld,
+                     TooManyRequests, Internal }
+//                   ^ the module's own 409 code: core cannot know what a batch is
 
 pub struct AppError { code: ErrorCode, user_message: String, detail: Option<String> }
 //                                     ^ shown to a pharmacy owner   ^ log and Sentry only [D-85]
@@ -197,12 +201,17 @@ same pooled connection is empty.
 
 ## 8. Blocked — planned, not specified
 
-Neither has a task. Both are in [`SPEC.md`](SPEC.md) §5.
+One item, in [`SPEC.md`](SPEC.md) §5.
 
 | Item | Blocked on | What unblocks it |
 |---|---|---|
-| `api/envelope.rs` field names | **Q1** — does `{success, message, data, meta}` match the API Design Guide? | Read the guide. The mechanism (`ApiOk<T>: IntoResponse`) is settled either way; only the serialised names are open |
 | `app.current_branch_ids()` and every branch-scoped policy | **Q2** — is `app.branch_ids` a Postgres array or comma-joined text? | `set_config` takes text only, so the policy must parse. Which form decides the function's return type and the policy's shape |
+
+> **Q1 is answered (2026-10-21)** from the API Design Guide, §§2–5 and 7. There is no success
+> wrapper — a response is the resource; lists are `{data, next_cursor, has_more}` with no
+> total; errors are `{error:{code, message, details, trace_id}}` with `lower_snake` codes.
+> `ApiOk<T>: IntoResponse` survives unchanged, which is why this was never a mechanism
+> question. Shapes in [`CONTRACT.md`](CONTRACT.md) §2.
 
 **`tenant_id` and `user_id` are unaffected by Q2**, so the transaction, the canary and all the
 isolation tests proceed now. Only branch scoping waits.

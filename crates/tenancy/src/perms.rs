@@ -1,0 +1,10 @@
+pub const VIEW: &str = "tenant.view";
+pub const UPDATE: &str = "tenant.update";
+pub const SETTINGS_UPDATE: &str = "tenant.settings.update";
+pub const BRANCH_VIEW: &str = "branch.view";
+pub const BRANCH_CREATE: &str = "branch.create";
+pub const BRANCH_UPDATE: &str = "branch.update";
+pub const SUBSCRIPTION_VIEW: &str = "subscription.view";
+pub const SUBSCRIPTION_PAY: &str = "subscription.pay";
+pub const EXPORT: &str = "tenant.export";
+pub const CLOSE: &str = "tenant.close";

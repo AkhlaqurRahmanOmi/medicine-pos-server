@@ -37,6 +37,38 @@ file rather than a naming convention. Mechanics in [`enforcement.md`](enforcemen
 5. Gate 5 runs as a separate pass, by an agent that did not implement the tasks
    (`../CONSTITUTION.md` Article II.2).
 
+## Optional tasks — the backlog
+
+A module may carry a `BACKLOG.md` beside its other artifacts, holding work that is real but
+does not gate: what a review found after Gate 5 closed, or what was deferred on purpose. It
+is optional in the strict sense — **nothing can be failed by it.**
+
+| | |
+|---|---|
+| **Counted?** | No. The module's total in [`../INDEX.md`](../INDEX.md) is what `tasks.md` asserts. A backlog is noted in the module's Notes cell, never added to the count. |
+| **Run by the verifier?** | No. The runner walks files named `tasks.md` only, so `--lint`, `build.rs`, the commit hook and the tick hook are all blind to this file by construction, not by politeness. |
+| **Ticked in place?** | Never. Completing an item means cutting it into `tasks.md` under a new phase, ticking it there once its command exits 0, and raising the `INDEX.md` count to match. |
+
+Items are written in the `tasks.md` form — a checkbox and a `VERIFY:` line — so that promotion
+is a move and not a rewrite. An item whose `VERIFY:` line cannot be written is too vague to
+file; split it or leave it out ([`enforcement.md`](enforcement.md)).
+
+**Why this exists.** A module at Phase 5 whose review turns up sixteen findings has only bad
+options: claim it is done, or re-open a gate that was honestly passed. The backlog is the
+third. The gate records what was asserted at the time; the backlog records what was learned
+afterwards. Neither pretends to be the other.
+
+**Two things do not belong here.**
+
+1. **An open requirement question** blocks the gate it would change — record it in the spec's
+   Open Questions table and ask (`Art. III`, [`requirements.md`](requirements.md)).
+2. **A defect that makes a ticked assertion false** is not optional. It un-ticks that task and
+   goes in `INDEX.md`'s *Failing assertions*, because a tick is a claim about proof and the
+   proof is gone. Filing one as backlog instead is a decision; make it visibly, on the item.
+
+There is no template and `cargo xtask new` does not scaffold one — a backlog exists only once
+something has been learned, and an empty one in every module is noise.
+
 ## Why gates rather than a checklist
 
 Each gate exists because its artifact is cheaper to change than the one after it. Changing

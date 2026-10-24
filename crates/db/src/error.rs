@@ -57,12 +57,12 @@ mod tests {
 
         let conflict_err = DbErr::Custom("duplicate key value violates unique constraint".into());
         let app_err = db_error_to_app_error(conflict_err);
-        assert_eq!(app_err.code, ErrorCode::Conflict);
+        assert_eq!(app_err.code, ErrorCode::Conflict(ErrorCode::GENERIC_CONFLICT));
 
         let forbidden_err =
             DbErr::Custom("new row violates row-level security policy for table".into());
         let app_err = db_error_to_app_error(forbidden_err);
-        assert_eq!(app_err.code, ErrorCode::Forbidden);
+        assert_eq!(app_err.code, ErrorCode::PermissionDenied);
 
         let internal_err = DbErr::Custom("connection pool timeout".into());
         let app_err = db_error_to_app_error(internal_err);

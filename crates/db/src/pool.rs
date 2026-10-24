@@ -72,6 +72,9 @@ mod tests {
             },
             auth: AuthConfig {
                 jwt_secret: "secret".into(),
+                access_token_ttl_secs: 900,
+                refresh_token_ttl_secs: 30 * 24 * 60 * 60,
+                impersonation_ttl_secs: 60 * 60,
             },
         };
 

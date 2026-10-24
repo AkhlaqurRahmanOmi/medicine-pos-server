@@ -12,6 +12,9 @@ db = { path = "../db" }
 dotenvy.workspace = true
 infra = { path = "../infra" }
 pos_core = { package = "core", path = "../core" }
+tenancy = { path = "../tenancy" }
+identity = { path = "../identity" }
+catalog = { path = "../catalog" }
 serde_json.workspace = true
 tokio.workspace = true
 tower.workspace = true
@@ -19,6 +22,8 @@ tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 utoipa.workspace = true
+utoipa-axum.workspace = true
+utoipa-scalar.workspace = true
 
 [build-dependencies]
 sdd-lint = { path = "../../tools/sdd-lint" }
