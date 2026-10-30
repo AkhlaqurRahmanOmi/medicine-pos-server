@@ -228,6 +228,7 @@ pub async fn login(
     let access_token = tokens::encode_pharmacy_token(
         user.id,
         user.tenant_id,
+        session_id,
         &settings.jwt_secret,
         settings.access_ttl_secs,
     )?;
@@ -348,6 +349,7 @@ pub async fn refresh_token(
     let access_token = tokens::encode_pharmacy_token(
         user_id,
         tenant_id,
+        session_id,
         &settings.jwt_secret,
         settings.access_ttl_secs,
     )?;

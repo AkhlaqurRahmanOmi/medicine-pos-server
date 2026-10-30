@@ -1,7 +1,7 @@
 use chrono::Utc;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use pos_core::error::AppError;
-use pos_core::ids::{TenantId, UserId};
+use pos_core::ids::{SessionId, TenantId, UserId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -13,6 +13,7 @@ pub const PLATFORM_AUDIENCE: &str = "pos:platform";
 pub struct PharmacyClaims {
     pub sub: String,
     pub tenant_id: String,
+    pub session_id: String,
     pub aud: String,
     pub exp: i64,
     pub iat: i64,
@@ -30,6 +31,7 @@ pub struct PlatformClaims {
 pub fn encode_pharmacy_token(
     user_id: UserId,
     tenant_id: TenantId,
+    session_id: SessionId,
     secret: &str,
     expires_in_secs: i64,
 ) -> Result<String, AppError> {
@@ -37,6 +39,7 @@ pub fn encode_pharmacy_token(
     let claims = PharmacyClaims {
         sub: user_id.to_string(),
         tenant_id: tenant_id.to_string(),
+        session_id: session_id.to_string(),
         aud: PHARMACY_AUDIENCE.to_string(),
         exp: now + expires_in_secs,
         iat: now,
@@ -102,7 +105,7 @@ pub fn decode_platform_token(token: &str, secret: &str) -> Result<PlatformClaims
         jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
             AppError::new(pos_core::error::ErrorCode::TokenExpired, "Platform token has expired")
         }
-        _ => AppError::forbidden(format!("Invalid platform token: {e}")),
+        _ => AppError::unauthorized(format!("Invalid platform token: {e}")),
     })?;
     Ok(token_data.claims)
 }
@@ -122,12 +125,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_pharmacy_token_carries_its_session_id() {
+        let secret = "test-secret-key-12345";
+        let user_id = UserId::new_v7();
+        let tenant_id = TenantId::new_v7();
+        let session_id = SessionId::new_v7();
+
+        let token = encode_pharmacy_token(user_id, tenant_id, session_id, secret, 900).unwrap();
+        let claims = decode_pharmacy_token(&token, secret).unwrap();
+
+        assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.tenant_id, tenant_id.to_string());
+        assert_eq!(claims.session_id, session_id.to_string());
+        assert_eq!(claims.aud, PHARMACY_AUDIENCE);
+    }
+
+    #[test]
     fn a_pharmacy_token_fails_platform_decoding() {
         let secret = "test-secret-key-12345";
         let user_id = UserId::new_v7();
         let tenant_id = TenantId::new_v7();
+        let session_id = SessionId::new_v7();
 
-        let pharmacy_token = encode_pharmacy_token(user_id, tenant_id, secret, 900).unwrap();
+        let pharmacy_token = encode_pharmacy_token(user_id, tenant_id, session_id, secret, 900).unwrap();
 
         // Decoding with platform validator MUST fail due to audience mismatch
         let result = decode_platform_token(&pharmacy_token, secret);
@@ -144,12 +164,14 @@ mod tests {
         let secret = "test-secret-key-12345";
         let user_id = UserId::new_v7();
         let tenant_id = TenantId::new_v7();
+        let session_id = SessionId::new_v7();
 
-        let token = encode_pharmacy_token(user_id, tenant_id, secret, 900).unwrap();
+        let token = encode_pharmacy_token(user_id, tenant_id, session_id, secret, 900).unwrap();
         let claims = decode_pharmacy_token(&token, secret).unwrap();
 
         assert_eq!(claims.sub, user_id.to_string());
         assert_eq!(claims.tenant_id, tenant_id.to_string());
+        assert_eq!(claims.session_id, session_id.to_string());
         assert_eq!(claims.aud, PHARMACY_AUDIENCE);
     }
 
@@ -158,9 +180,10 @@ mod tests {
         let secret = "test-secret-key-12345";
         let user_id = UserId::new_v7();
         let tenant_id = TenantId::new_v7();
+        let session_id = SessionId::new_v7();
 
         // Expired in the past (-10 seconds)
-        let token = encode_pharmacy_token(user_id, tenant_id, secret, -10).unwrap();
+        let token = encode_pharmacy_token(user_id, tenant_id, session_id, secret, -10).unwrap();
         let result = decode_pharmacy_token(&token, secret);
         assert!(result.is_err(), "Expired token must be refused");
         let err = result.unwrap_err();

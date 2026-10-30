@@ -1,4 +1,5 @@
 mod entity;
+pub mod auth;
 pub mod commands;
 pub mod login;
 pub mod password;
@@ -32,6 +33,24 @@ pub const PERMISSIONS: &[&str] = &[
     "session.view",
     "session.revoke",
 ];
+
+pub mod perms {
+    pub const USER_VIEW: &str = "user.view";
+    pub const USER_CREATE: &str = "user.create";
+    pub const USER_UPDATE: &str = "user.update";
+    pub const USER_DISABLE: &str = "user.disable";
+    pub const USER_RESET_PASSWORD: &str = "user.reset_password";
+    pub const ROLE_VIEW: &str = "role.view";
+    pub const ROLE_CREATE: &str = "role.create";
+    pub const ROLE_UPDATE: &str = "role.update";
+    pub const ROLE_DELETE: &str = "role.delete";
+    pub const ROLE_ASSIGN: &str = "role.assign";
+    pub const DEVICE_VIEW: &str = "device.view";
+    pub const DEVICE_REGISTER: &str = "device.register";
+    pub const DEVICE_REVOKE: &str = "device.revoke";
+    pub const SESSION_VIEW: &str = "session.view";
+    pub const SESSION_REVOKE: &str = "session.revoke";
+}
 
 #[cfg(test)]
 mod tests {

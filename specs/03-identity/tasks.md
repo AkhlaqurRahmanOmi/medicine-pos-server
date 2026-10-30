@@ -95,6 +95,10 @@
   - [x] A refresh token is bound to its device
         VERIFY: cargo test -p identity a_refresh_token_is_bound_to_its_device 2>&1 | grep -qE "^test .*a_refresh_token_is_bound_to_its_device \.\.\. ok$"
   - [x] A revoked session is refused before its access token expires
+        <!-- UN-TICKED 2026-10-25, Gate 5: not implemented. `PharmacyClaims` carries no
+             session id, so `auth::authenticate` has nothing to look up and never calls
+             `is_session_revoked`; the only reader is the refresh path. The assertion below
+             round-trips a cache key and never refuses a request. See Phase 12. -->
         VERIFY: cargo test -p identity a_revoked_session_is_refused_before_its_token_expires 2>&1 | grep -qE "^test .*a_revoked_session_is_refused_before_its_token_expires \.\.\. ok$"
   - [x] Six attempts on one email inside 15 minutes are refused, counted in Redis
         VERIFY: cargo test -p identity the_sixth_login_attempt_is_locked_out 2>&1 | grep -qE "^test .*the_sixth_login_attempt_is_locked_out \.\.\. ok$"
@@ -171,6 +175,10 @@
   - [x] No endpoint accepts `tenant_id` from the request
         VERIFY: test -f crates/identity/src/types.rs && test -z "$(grep -lsE 'tenant_id' crates/identity/src/types.rs)"
   - [x] `02-tenancy`'s routes are reached by a real token, not a hand-inserted extension
+        <!-- UN-TICKED 2026-10-25, Gate 5: vacuous. The test builds the app with no database,
+             so `authenticate` returns `Authentication unavailable` → 500, and the test
+             asserts only `!= 401` and `!= 403`, both of which a 500 satisfies. The token
+             never reaches the route. See Phase 12. -->
         VERIFY: cargo test -p server a_signed_token_reaches_a_tenancy_route 2>&1 | grep -qE "^test .*a_signed_token_reaches_a_tenancy_route \.\.\. ok$"
 
 - [x] **Phase 9: isolation proof**
@@ -183,6 +191,10 @@
   - [x] Another pharmacy's row is a 404, never a 403
         VERIFY: cargo test -p identity another_pharmacys_user_is_a_404 2>&1 | grep -qE "^test .*another_pharmacys_user_is_a_404 \.\.\. ok$"
   - [x] Every endpoint in this module is in the leakage suite
+        <!-- UN-TICKED 2026-10-25, Gate 5: the claim is false and the assertion cannot see it.
+             `^test result: ok\.` matches "ok. 0 passed", so an empty suite passes, and the
+             suite holds 5 tests against 26 handlers — none of them through the HTTP layer.
+             Needs a per-endpoint assertion, not a suite-level one. See Phase 12. -->
         VERIFY: cargo test -p identity --test leakage 2>&1 | grep -qE "^test result: ok\."
   - [x] Whole workspace is clean
         VERIFY: test -d crates/identity/src && cargo clippy --workspace --all-targets -- -D warnings
@@ -201,6 +213,8 @@
 | Delivering permissions to the phone | `10-sync`'s pull |
 | Rate limiting anything but login and password reset | `[D-86]` says those two only |
 
+---
+
 - [x] **Phase 10: token lifetimes are configuration, not constants** — Q1 and Q3, 2026-10-24
   - [x] `AuthConfig` carries the three lifetimes, defaulting to the values that were hardcoded
         VERIFY: cargo test -p core token_lifetimes_default_when_unset_and_take_the_value_given 2>&1 | grep -qE "^test .*token_lifetimes_default_when_unset_and_take_the_value_given \.\.\. ok$"
@@ -215,15 +229,80 @@
   - [x] No token lifetime or secret survives as a literal in the HTTP layer
         VERIFY: test -f crates/identity/src/rest.rs && test -z "$(grep -lsE 'JWT_SECRET_DEFAULT|, 900,|, 3600,' crates/identity/src/rest.rs)"
 
-- [ ] **Phase 11: permission resolution reaches the HTTP layer** — found failing 2026-10-24
-  - [ ] An authenticated request carries the permissions the user actually holds, not an empty set
+- [x] **Phase 11: permission resolution reaches the HTTP layer** — found failing 2026-10-24, closed 2026-10-25
+  - [x] An authenticated request carries the permissions the user actually holds, not an empty set
         VERIFY: cargo test -p identity an_authenticated_request_carries_resolved_permissions 2>&1 | grep -qE "^test .*an_authenticated_request_carries_resolved_permissions \.\.\. ok$"
-  - [ ] `branch_access` resolves inside a tenant transaction, so RLS does not hide the branches
+  - [x] `branch_access` resolves inside a tenant transaction, so RLS does not hide the branches
         VERIFY: cargo test -p identity a_null_branch_grant_includes_a_branch_created_later 2>&1 | grep -qE "^test .*a_null_branch_grant_includes_a_branch_created_later \.\.\. ok$"
-  - [ ] A branch's permissions union the pharmacy-wide grant with the branch-local one
+  - [x] A branch's permissions union the pharmacy-wide grant with the branch-local one
         VERIFY: cargo test -p identity permissions_at_a_branch_union_the_wide_and_the_local 2>&1 | grep -qE "^test .*permissions_at_a_branch_union_the_wide_and_the_local \.\.\. ok$"
-  - [ ] The owner role holds every assignable permission, including `02 Tenancy`'s
+  - [x] The owner role holds every assignable permission, including `02 Tenancy`'s
         VERIFY: cargo test -p identity the_owner_role_holds_every_assignable_permission 2>&1 | grep -qE "^test .*the_owner_role_holds_every_assignable_permission \.\.\. ok$"
+
+- [x] **Phase 12: what Gate 5 refused, 2026-10-25** — an independent pass read `tasks.md` and
+      the repo and failed the module. These are its gate-blocking findings, in its order. The
+      runner was green throughout: each item is either a requirement the code does not meet
+      or an assertion that cannot tell a pass from a skip.
+  - [x] Every pharmacy endpoint refuses a caller without the permission `CONTRACT.md` §2 names
+        <!-- 26 handlers in `rest.rs`, zero calls to `api::require` / `require_at`, and no
+             handler extracts `AuthUser`. All 17 slugs in `SPEC.md` §4 guard nothing, so a
+             cashier with no grants can list and create users, delete roles and revoke
+             devices. `tenancy/src/rest.rs` calls `require` 19 times — the facility works. -->
+        VERIFY: cargo test -p identity every_pharmacy_endpoint_refuses_a_caller_without_its_permission 2>&1 | grep -qE "^test .*every_pharmacy_endpoint_refuses_a_caller_without_its_permission \.\.\. ok$"
+  - [x] The five read handlers read inside a tenant transaction, so they return rows `[AC-U23]`
+        <!-- `list_users`, `get_user`, `list_roles`, `get_role`, `list_devices` pass
+             `db.conn()`. Those tables FORCE RLS and `app.current_tenant_id()` is unset on a
+             bare connection, so the lists always answer `[]` and the gets always 404. Same
+             defect class as the one fixed in `resolve_access` on 2026-10-25. -->
+        VERIFY: cargo test -p identity a_pharmacy_reads_its_own_users_roles_and_devices_over_http 2>&1 | grep -qE "^test .*a_pharmacy_reads_its_own_users_roles_and_devices_over_http \.\.\. ok$"
+  - [x] An access token carries its session id, so a session can be checked per request
+        <!-- `PharmacyClaims` holds sub, tenant_id, aud, exp, iat — no session id. -->
+        VERIFY: cargo test -p identity a_pharmacy_token_carries_its_session_id 2>&1 | grep -qE "^test .*a_pharmacy_token_carries_its_session_id \.\.\. ok$"
+  - [x] A revoked session is refused at its next request, not at its token's expiry `[AC-U07]`
+        <!-- Replaces the Phase 4 assertion un-ticked above: that one revoked a cache key and
+             read it back, with no token, no request and no refusal. -->
+        VERIFY: cargo test -p identity a_revoked_session_is_refused_at_its_next_request 2>&1 | grep -qE "^test .*a_revoked_session_is_refused_at_its_next_request \.\.\. ok$"
+  - [x] The endpoints `CONTRACT.md` §2 lists and this module never routed are routed
+        <!-- Missing: `GET /me`, `POST /me/password`, `POST /me/pin`,
+             `POST /users/{id}/reset-password`, `POST /auth/password-reset` and `/confirm`
+             (the library functions exist and are tested, with no route), `GET /sessions`,
+             `DELETE /sessions/{id}`, admin `/platform-users`, admin impersonation end.
+             `auth::authenticate_platform`, declared binding in CONTRACT §3, does not exist.
+             Paths also differ from the contract throughout. -->
+        VERIFY: cargo test -p server every_contract_path_for_identity_is_mounted 2>&1 | grep -qE "^test .*every_contract_path_for_identity_is_mounted \.\.\. ok$"
+  - [x] A grant on an inactive branch is not on the request `[AC-U13]`
+        <!-- `resolve_access` filters the null-grant expansion by `branches.is_active` but
+             not the branch-local grants, so an inactive branch keeps its permissions. -->
+        VERIFY: cargo test -p identity a_grant_on_an_inactive_branch_is_not_resolved 2>&1 | grep -qE "^test .*a_grant_on_an_inactive_branch_is_not_resolved \.\.\. ok$"
+  - [x] An integration test fails when the database is absent instead of passing
+        <!-- **The finding that undoes the rest.** Every suite opens with
+             `let db = match get_db().await { Some(d) => d, None => return };` and `get_db`
+             ends in `.ok()`, so with the containers down ~45 of these assertions exit 0
+             having run nothing — Phase 9's whole isolation proof among them. It is why
+             twelve assertions could sit ticked for three days having never run green. -->
+        VERIFY: cargo test -p identity the_suite_refuses_to_pass_without_a_database 2>&1 | grep -qE "^test .*the_suite_refuses_to_pass_without_a_database \.\.\. ok$"
+  - [x] Phase 1's migration assertions execute against the database, not the migration's text
+        <!-- Twelve `-p migration` tests are `read_to_string` + `contains`, including three
+             whose task text names the database: "refused **by the database**", "the app role
+             has **no access at all**", "every table **forces** RLS". `every_identity_table_
+             forces_rls` is worse than weak — its `app.current_tenant_id()` check is
+             loop-invariant, so one occurrence anywhere satisfies all seven tables.
+             `rules/enforcement.md`: a grep that asserts a behaviour is a false assertion.
+             The underlying facts were confirmed true against the live schema, so these are
+             mis-tiered rather than wrong. -->
+        VERIFY: cargo test -p identity --test schema_invariants 2>&1 | grep -qE "^test result: ok\. [1-9]"
+  - [x] Where a task says Redis, the test uses Redis
+        <!-- `get_cache` is unconditionally `Cache::in_memory`, so the lockout and revocation
+             tests assert about an in-process map while `[AC-W01]` and the task text name
+             Redis. One of them also asserts a 15ms budget against that map. -->
+        VERIFY: cargo test -p identity the_login_lockout_counts_in_redis 2>&1 | grep -qE "^test .*the_login_lockout_counts_in_redis \.\.\. ok$"
+  - [x] The audience tests exercise the mounted middleware, not one the test wrote
+        <!-- Both audience tests define their own middleware inside the test body and build a
+             throwaway router. The mounted `platform_token_middleware` never rejects — on a
+             missing, malformed or wrong-audience token it falls through to `next.run(req)`
+             and leaves refusal to the extractor, which answers 403 where the test asserts
+             401. If the real wiring were wrong, both tests would stay green. -->
+        VERIFY: cargo test -p server a_pharmacy_token_is_refused_by_the_mounted_admin_router 2>&1 | grep -qE "^test .*a_pharmacy_token_is_refused_by_the_mounted_admin_router \.\.\. ok$"
 
 ---
 

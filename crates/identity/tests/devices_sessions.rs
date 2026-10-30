@@ -95,14 +95,8 @@ async fn seed_user(
 
 #[tokio::test]
 async fn a_second_device_cannot_take_a_used_prefix() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let tenant_a = TenantId::new_v7();
     let branch_a = BranchId::new_v7();
@@ -145,14 +139,8 @@ async fn a_second_device_cannot_take_a_used_prefix() {
 
 #[tokio::test]
 async fn revoking_a_device_revokes_its_sessions() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_revoke_device");
 
     let tenant_id = TenantId::new_v7();
@@ -226,14 +214,8 @@ async fn revoking_a_device_revokes_its_sessions() {
 
 #[tokio::test]
 async fn disabling_a_user_revokes_their_sessions() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_disable_user_sess");
 
     let tenant_id = TenantId::new_v7();
@@ -304,14 +286,8 @@ async fn disabling_a_user_revokes_their_sessions() {
 
 #[tokio::test]
 async fn a_pin_cannot_start_a_session_on_a_new_device() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_pin_unlock");
 
     let tenant_id = TenantId::new_v7();
@@ -385,14 +361,8 @@ async fn a_pin_cannot_start_a_session_on_a_new_device() {
 
 #[tokio::test]
 async fn a_pin_is_not_a_credential_at_the_login_endpoint() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_pin_not_cred");
 
     let tenant_id = TenantId::new_v7();
@@ -441,14 +411,8 @@ async fn a_pin_is_not_a_credential_at_the_login_endpoint() {
 
 #[tokio::test]
 async fn an_override_records_who_approved_it() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_override_mgr");
 
     let tenant_id = TenantId::new_v7();

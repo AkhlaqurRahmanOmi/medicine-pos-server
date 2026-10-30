@@ -28,5 +28,9 @@ utoipa-scalar.workspace = true
 [build-dependencies]
 sdd-lint = { path = "../../tools/sdd-lint" }
 
+[dev-dependencies]
+sqlx.workspace = true
+uuid.workspace = true
+
 [lints]
 workspace = true

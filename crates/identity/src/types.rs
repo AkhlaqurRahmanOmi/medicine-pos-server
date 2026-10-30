@@ -314,3 +314,18 @@ pub struct PlatformLoginResponse {
 pub struct OpenImpersonationRequest {
     pub reason: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct CreatePlatformUserRequest {
+    pub email: String,
+    pub role: PlatformRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PlatformUser {
+    pub id: uuid::Uuid,
+    pub email: String,
+    pub role: String,
+    pub status: String,
+    pub last_login_at: Option<DateTime<Utc>>,
+}

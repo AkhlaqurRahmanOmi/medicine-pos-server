@@ -28,6 +28,17 @@ cast_precision_loss = "warn"
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
+# Debug artifacts, not debug symbols: 18 integration tests across 10 crates each statically
+# link axum + sea-orm + sqlx + tokio, so full DWARF put `target/` at 27 GB. Line tables keep
+# panic backtraces pointing at a file and a line, which is the only thing we read them for.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+# Nobody steps into sea-orm internals, and that is where the bulk of the DWARF lives.
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
@@ -62,6 +73,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 utoipa = { version = "6", features = ["axum_extras", "uuid", "chrono", "decimal"] }
 utoipa-axum = "0.3"
 utoipa-scalar = { version = "0.4", features = ["axum"] }
+
+# ---- csv (the one-time catalogue import, behind `catalog/seed`) ----
+csv = "1"
 
 # ---- config ----
 figment = { version = "0.10", features = ["toml", "env"] }

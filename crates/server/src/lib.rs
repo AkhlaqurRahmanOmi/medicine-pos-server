@@ -26,19 +26,20 @@ impl AppState {
 }
 
 use pos_core::error::AppError;
-use pos_core::ids::{TenantId, UserId};
 use pos_core::ports::BoxFuture;
 
 #[derive(Clone)]
 pub struct IdentityAuthenticator {
     jwt_secret: String,
+    db: Option<Db>,
 }
 
 impl IdentityAuthenticator {
     #[must_use]
-    pub fn new(jwt_secret: impl Into<String>) -> Self {
+    pub fn new(jwt_secret: impl Into<String>, db: Option<Db>) -> Self {
         Self {
             jwt_secret: jwt_secret.into(),
+            db,
         }
     }
 }
@@ -49,21 +50,16 @@ impl api::Authenticator for IdentityAuthenticator {
         token: &'a str,
     ) -> BoxFuture<'a, Result<api::AuthUser, AppError>> {
         Box::pin(async move {
-            let claims = identity::tokens::decode_pharmacy_token(token, &self.jwt_secret)?;
-            let user_id = claims
-                .sub
-                .parse::<UserId>()
-                .map_err(|e| AppError::unauthorized(format!("Invalid sub in token: {e}")))?;
-            let tenant_id = claims
-                .tenant_id
-                .parse::<TenantId>()
-                .map_err(|e| AppError::unauthorized(format!("Invalid tenant_id in token: {e}")))?;
-            Ok(api::AuthUser {
-                user_id,
-                tenant_id,
-                permissions: vec![],
-                branch_permissions: Default::default(),
-            })
+            // The resolution lives in `identity::auth`, so this crate holds the wiring and
+            // not the policy. Without a database it can only decode — which is what the
+            // health-only configurations do.
+            let db = self.db.as_ref().ok_or_else(|| {
+                AppError::internal(
+                    "Authentication unavailable",
+                    "no database is wired into this server",
+                )
+            })?;
+            identity::auth::authenticate(db.conn(), &self.jwt_secret, token).await
         })
     }
 }
@@ -73,6 +69,7 @@ pub async fn platform_token_middleware(
     mut req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
+    use axum::response::IntoResponse;
     let auth_header = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
@@ -80,9 +77,12 @@ pub async fn platform_token_middleware(
 
     if let Some(h) = auth_header {
         let t = h.strip_prefix("Bearer ").unwrap_or(h).trim();
-        if let Ok(claims) = identity::tokens::decode_platform_token(t, &jwt_secret) {
-            if let Ok(user_id) = claims.sub.parse::<UserId>() {
-                req.extensions_mut().insert(api::PlatformToken { user_id });
+        match identity::auth::authenticate_platform(&jwt_secret, t).await {
+            Ok(token) => {
+                req.extensions_mut().insert(token);
+            }
+            Err(err) => {
+                return api::ApiError::from(err).into_response();
             }
         }
     }
@@ -103,7 +103,8 @@ pub fn create_router(state: AppState) -> Router {
             Arc::new(tenancy::access::DummyAccessModeSource)
         };
 
-    let authenticator = IdentityAuthenticator::new(state.config.auth.jwt_secret.clone());
+    let authenticator =
+        IdentityAuthenticator::new(state.config.auth.jwt_secret.clone(), state.db.clone());
     let jwt_secret = Arc::new(state.config.auth.jwt_secret.clone());
     // One source for the secret and the three lifetimes: no handler holds a constant.
     // Module 03 Q1/Q3, answered 2026-10-24.
@@ -512,33 +513,144 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn every_contract_path_for_identity_is_mounted() {
+        let (status, json) = body_text(test_app(), "/openapi.json").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let doc: serde_json::Value = serde_json::from_str(&json).expect("valid openapi json");
+        let paths = doc["paths"].as_object().expect("paths object");
+
+        for expected in [
+            "/auth/login",
+            "/auth/refresh",
+            "/auth/logout",
+            "/auth/password-reset",
+            "/auth/password-reset/confirm",
+            "/api/v1/me",
+            "/api/v1/me/password",
+            "/api/v1/me/pin",
+            "/api/v1/users",
+            "/api/v1/users/{id}",
+            "/api/v1/users/{id}/disable",
+            "/api/v1/users/{id}/reset-password",
+            "/api/v1/permissions",
+            "/api/v1/roles",
+            "/api/v1/roles/{id}",
+            "/api/v1/roles/{id}/permissions",
+            "/api/v1/users/{id}/roles",
+            "/api/v1/users/{id}/roles/{grant_id}",
+            "/api/v1/devices",
+            "/api/v1/devices/{id}/revoke",
+            "/api/v1/sessions",
+            "/api/v1/sessions/{id}",
+            "/api/v1/impersonation-sessions",
+            "/api/v1/admin/auth/login",
+            "/api/v1/admin/auth/login/totp",
+            "/api/v1/admin/platform-users",
+            "/api/v1/admin/impersonation-sessions",
+            "/api/v1/admin/impersonation-sessions/{id}/enable-writes",
+            "/api/v1/admin/impersonation-sessions/{id}/end",
+        ] {
+            assert!(
+                paths.contains_key(expected),
+                "{expected} is in CONTRACT.md §2 but missing from the OpenAPI document"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn a_signed_token_reaches_a_tenancy_route() {
+        let owner_url = "postgres://pos_owner:devpass@127.0.0.1:5432/medicine_pos";
+        let app_url = "postgres://pos_app:devpass@127.0.0.1:5432/medicine_pos";
+        let pool = sqlx::PgPool::connect(owner_url).await.expect("database connection required");
+
+        let tenant_id = pos_core::ids::TenantId::new_v7();
+        let user_id = pos_core::ids::UserId::new_v7();
+        let session_id = pos_core::ids::SessionId::new_v7();
+        let role_id = pos_core::ids::RoleId::new_v7();
+        let grant_id = uuid::Uuid::now_v7();
+
+        // Seed tenant
+        let _ = sqlx::query(
+            "INSERT INTO tenants (id, name, status, created_at, updated_at) VALUES ($1, 'Tenancy Reach Test', 'active', now(), now()) ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(tenant_id.as_uuid())
+        .execute(&pool)
+        .await
+        .expect("seed tenant");
+
+        // Seed user
+        let _ = sqlx::query(
+            "INSERT INTO users (id, tenant_id, name, email, password_hash, status, created_at, updated_at) VALUES ($1, $2, 'Tenancy Tester', $3, 'hash', 'active', now(), now())"
+        )
+        .bind(user_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(format!("tenancy_reach_{}@example.com", tenant_id.as_uuid()))
+        .execute(&pool)
+        .await
+        .expect("seed user");
+
+        // Seed session
+        let _ = sqlx::query(
+            "INSERT INTO sessions (id, tenant_id, user_id, refresh_token_hash, expires_at, created_at) VALUES ($1, $2, $3, $4, now() + interval '1 day', now())"
+        )
+        .bind(session_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .bind(user_id.as_uuid())
+        .bind(format!("hash_{}", session_id.as_uuid()))
+        .execute(&pool)
+        .await
+        .expect("seed session");
+
+        // Seed role with tenancy.view
+        let _ = sqlx::query(
+            "INSERT INTO roles (id, tenant_id, name, is_system, is_owner, created_at, updated_at) VALUES ($1, $2, 'Owner', false, true, now(), now())"
+        )
+        .bind(role_id.as_uuid())
+        .bind(tenant_id.as_uuid())
+        .execute(&pool)
+        .await
+        .expect("seed role");
+
+        let _ = sqlx::query(
+            "INSERT INTO role_permissions (tenant_id, role_id, permission_code, created_at) VALUES ($1, $2, 'tenant.view', now())"
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(role_id.as_uuid())
+        .execute(&pool)
+        .await
+        .expect("seed role perms");
+
+        let _ = sqlx::query(
+            "INSERT INTO user_branch_roles (id, tenant_id, user_id, role_id, branch_id, created_at) VALUES ($1, $2, $3, $4, NULL, now())"
+        )
+        .bind(grant_id)
+        .bind(tenant_id.as_uuid())
+        .bind(user_id.as_uuid())
+        .bind(role_id.as_uuid())
+        .execute(&pool)
+        .await
+        .expect("seed ubr");
+
         let figment = pos_core::Config::figment()
-            .merge((
-                "database.url",
-                "postgres://pos_owner:devpass@localhost/medicine_pos",
-            ))
-            .merge((
-                "database.app_url",
-                "postgres://pos_app:devpass@localhost/medicine_pos",
-            ))
+            .merge(("database.url", owner_url))
+            .merge(("database.app_url", app_url))
             .merge(("server.port", 8080))
             .merge(("server.env", "test"))
             .merge(("redis.url", "redis://localhost:6379"))
             .merge(("auth.jwt_secret", "secret"));
 
         let config = pos_core::Config::from_figment(&figment).expect("parse test config");
-        let state = AppState::new(config, None, Some(Cache::in_memory("test")));
+        let app_db = db::Db::connect(&config).await.expect("connect app db");
+        let state = AppState::new(config, Some(app_db), Some(Cache::in_memory("test")));
         let app = create_router(state);
 
-        let user_id = pos_core::ids::UserId::new_v7();
-        let tenant_id = pos_core::ids::TenantId::new_v7();
-        let token = identity::tokens::encode_pharmacy_token(user_id, tenant_id, "secret", 900)
+        let token = identity::tokens::encode_pharmacy_token(user_id, tenant_id, session_id, "secret", 900)
             .expect("encode token");
 
-        // 1. Unauthenticated request to /api/v1/plans returns 401
+        // 1. Unauthenticated request to /api/v1/tenant returns 401
         let req_unauth = Request::builder()
-            .uri("/api/v1/plans")
+            .uri("/api/v1/tenant")
             .body(Body::empty())
             .unwrap();
         let resp_unauth = app.clone().oneshot(req_unauth).await.unwrap();
@@ -548,22 +660,42 @@ mod tests {
             "Request without token must be refused with 401"
         );
 
-        // 2. Request with real signed token reaches the route (not 401, not 403)
+        // 2. Request with real signed token reaches the route and succeeds with 200 OK
         let req_auth = Request::builder()
-            .uri("/api/v1/plans")
+            .uri("/api/v1/tenant")
             .header("Authorization", format!("Bearer {token}"))
             .body(Body::empty())
             .unwrap();
         let resp_auth = app.oneshot(req_auth).await.unwrap();
-        assert_ne!(
+        assert_eq!(
             resp_auth.status(),
-            StatusCode::UNAUTHORIZED,
-            "Real signed token must not be rejected with 401"
+            StatusCode::OK,
+            "Real signed token must reach the route and succeed with 200 OK"
         );
-        assert_ne!(
-            resp_auth.status(),
-            StatusCode::FORBIDDEN,
-            "Real signed token must not be rejected with 403"
+    }
+
+    #[tokio::test]
+    async fn a_pharmacy_token_is_refused_by_the_mounted_admin_router() {
+        let app = test_app();
+        let user_id = pos_core::ids::UserId::new_v7();
+        let tenant_id = pos_core::ids::TenantId::new_v7();
+        let session_id = pos_core::ids::SessionId::new_v7();
+        let token = identity::tokens::encode_pharmacy_token(user_id, tenant_id, session_id, "secret", 900)
+            .expect("encode pharmacy token");
+
+        let req = Request::builder()
+            .uri("/api/v1/admin/platform/impersonate/00000000-0000-0000-0000-000000000000")
+            .method("POST")
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .body(Body::from(r#"{"reason":"test"}"#))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::UNAUTHORIZED,
+            "A pharmacy token must be refused with 401 on admin routes"
         );
     }
 }

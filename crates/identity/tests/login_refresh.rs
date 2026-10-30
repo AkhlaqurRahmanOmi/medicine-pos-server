@@ -6,10 +6,9 @@ use identity::login::{
 };
 use identity::password::hash_password;
 use identity::rate_limit;
-use identity::revocation::{is_session_revoked, revoke_session};
 use identity::types::{LoginRequest, PasswordResetConfirmRequest, RefreshTokenRequest};
 use pos_core::error::ErrorCode;
-use pos_core::ids::{BranchId, DeviceId, SessionId, TenantId, UserId};
+use pos_core::ids::{BranchId, DeviceId, TenantId, UserId};
 use sea_orm::{Database, DatabaseConnection};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -117,14 +116,8 @@ async fn seed_branch_and_device(
 
 #[tokio::test]
 async fn login_answers_the_same_for_unknown_email_and_wrong_password() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_login_answers");
 
     let tenant_id = TenantId::new_v7();
@@ -207,14 +200,8 @@ async fn login_answers_the_same_for_unknown_email_and_wrong_password() {
 
 #[tokio::test]
 async fn a_login_creates_one_session() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_login_session");
 
     let tenant_id = TenantId::new_v7();
@@ -270,14 +257,8 @@ async fn a_login_creates_one_session() {
 
 #[tokio::test]
 async fn a_refreshed_token_replaces_the_one_presented() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_token_replace");
 
     let tenant_id = TenantId::new_v7();
@@ -335,14 +316,8 @@ async fn a_refreshed_token_replaces_the_one_presented() {
 
 #[tokio::test]
 async fn a_refresh_token_used_twice_revokes_the_session() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_theft");
 
     let tenant_id = TenantId::new_v7();
@@ -413,14 +388,8 @@ async fn a_refresh_token_used_twice_revokes_the_session() {
 
 #[tokio::test]
 async fn a_refresh_token_is_bound_to_its_device() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_device_bound");
 
     let tenant_id = TenantId::new_v7();
@@ -482,29 +451,97 @@ async fn a_refresh_token_is_bound_to_its_device() {
 
 #[tokio::test]
 async fn a_revoked_session_is_refused_before_its_token_expires() {
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_revoked_refused");
-    let session_id = SessionId::new_v7();
 
-    // Session is not revoked initially
-    assert!(!is_session_revoked(&cache, session_id).await.unwrap());
+    let tenant_id = TenantId::new_v7();
+    let user_id = UserId::new_v7();
+    let email = format!("revref_{}@test.com", Uuid::now_v7());
 
-    // Revoke session in Redis
-    revoke_session(&cache, session_id, 900).await.unwrap();
+    seed_user(&owner, tenant_id, user_id, &email, "Password123!", "active").await;
 
-    // Checked before access token expires: refused!
-    assert!(is_session_revoked(&cache, session_id).await.unwrap());
+    let login_res = login(
+        &db,
+        &cache,
+        LoginRequest {
+            email: email.clone(),
+            password: "Password123!".to_string(),
+            device_id: None,
+        },
+        &settings(),
+        None,
+        None,
+    )
+    .await
+    .expect("login successful");
+
+    // 1. Initial request with valid access token succeeds
+    let auth_res = identity::auth::authenticate(&db, JWT_SECRET, &login_res.access_token).await;
+    assert!(auth_res.is_ok(), "Initial authentication must succeed");
+
+    // 2. Revoke the session in database
+    let _ = sqlx::query("UPDATE sessions SET revoked_at = now() WHERE tenant_id = $1")
+        .bind(tenant_id.as_uuid())
+        .execute(&owner)
+        .await
+        .expect("update session revoked");
+
+    // 3. Before token expires: next authentication attempt is refused!
+    let auth_after_revoke = identity::auth::authenticate(&db, JWT_SECRET, &login_res.access_token).await;
+    assert!(
+        auth_after_revoke.is_err(),
+        "Revoked session must be refused before access token expires"
+    );
+}
+
+#[tokio::test]
+async fn a_revoked_session_is_refused_at_its_next_request() {
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
+    let cache = get_cache("test_revoked_next_req");
+
+    let tenant_id = TenantId::new_v7();
+    let user_id = UserId::new_v7();
+    let email = format!("revnext_{}@test.com", Uuid::now_v7());
+
+    seed_user(&owner, tenant_id, user_id, &email, "Password123!", "active").await;
+
+    let login_res = login(
+        &db,
+        &cache,
+        LoginRequest {
+            email: email.clone(),
+            password: "Password123!".to_string(),
+            device_id: None,
+        },
+        &settings(),
+        None,
+        None,
+    )
+    .await
+    .expect("login successful");
+
+    // 1. Request succeeds
+    let ok = identity::auth::authenticate(&db, JWT_SECRET, &login_res.access_token).await;
+    assert!(ok.is_ok());
+
+    // 2. Session is revoked in DB
+    let _ = sqlx::query("UPDATE sessions SET revoked_at = now() WHERE tenant_id = $1")
+        .bind(tenant_id.as_uuid())
+        .execute(&owner)
+        .await
+        .expect("revoke session");
+
+    // 3. Next request is immediately refused
+    let refused = identity::auth::authenticate(&db, JWT_SECRET, &login_res.access_token).await;
+    assert!(refused.is_err(), "Next request on revoked session must be refused");
 }
 
 #[tokio::test]
 async fn the_sixth_login_attempt_is_locked_out() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_sixth_locked");
 
     let tenant_id = TenantId::new_v7();
@@ -557,15 +594,64 @@ async fn the_sixth_login_attempt_is_locked_out() {
 }
 
 #[tokio::test]
+async fn the_login_lockout_counts_in_redis() {
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
+    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+    let cache = Cache::new(&redis_url, "test_redis_lockout").expect("connect to real Redis");
+    assert!(cache.pool().is_some(), "must use real Redis pool");
+
+    let tenant_id = TenantId::new_v7();
+    let user_id = UserId::new_v7();
+    let email = format!("redislock_{}@test.com", Uuid::now_v7());
+
+    seed_user(&owner, tenant_id, user_id, &email, "Password123!", "active").await;
+
+    // Attempts 1..=5 fail with 401
+    for i in 1..=5 {
+        let err = login(
+            &db,
+            &cache,
+            LoginRequest {
+                email: email.clone(),
+                password: "WrongPassword!".to_string(),
+                device_id: None,
+            },
+            &settings(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidToken, "Attempt {i} must be InvalidToken");
+    }
+
+    // Check that Redis holds the count 5
+    let count = cache.get(&format!("rl:login:{}", email.to_lowercase())).await.unwrap();
+    assert_eq!(count.as_deref(), Some("5"), "Redis must count 5 failed attempts");
+
+    // 6th attempt is locked out with 429
+    let err_sixth = login(
+        &db,
+        &cache,
+        LoginRequest {
+            email: email.clone(),
+            password: "WrongPassword!".to_string(),
+            device_id: None,
+        },
+        &settings(),
+        None,
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err_sixth.code, ErrorCode::TooManyRequests, "6th attempt must be locked out");
+}
+
+#[tokio::test]
 async fn a_failed_login_writes_no_row() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_no_row_write");
 
     let tenant_id = TenantId::new_v7();
@@ -623,10 +709,7 @@ async fn a_failed_login_writes_no_row() {
 
 #[tokio::test]
 async fn a_locked_out_email_is_refused_without_hashing() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
     let cache = get_cache("test_locked_no_hash");
     let email = format!("fastlock_{}@test.com", Uuid::now_v7());
 
@@ -663,14 +746,8 @@ async fn a_locked_out_email_is_refused_without_hashing() {
 
 #[tokio::test]
 async fn a_reset_token_works_once() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_reset_once");
 
     let tenant_id = TenantId::new_v7();
@@ -727,14 +804,8 @@ async fn a_reset_token_works_once() {
 
 #[tokio::test]
 async fn password_reset_answers_the_same_for_an_unknown_email() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_reset_answers");
 
     let tenant_id = TenantId::new_v7();
@@ -756,14 +827,8 @@ async fn password_reset_answers_the_same_for_an_unknown_email() {
 /// that sets two hours gets two hours, not the 30-day default this code used to hardcode.
 #[tokio::test]
 async fn the_refresh_lifetime_comes_from_configuration() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_cfg_refresh_ttl");
 
     let tenant_id = TenantId::new_v7();
@@ -816,14 +881,8 @@ async fn the_refresh_lifetime_comes_from_configuration() {
 /// hardcoded test secret while the authenticator verified with the configured one.
 #[tokio::test]
 async fn login_signs_with_the_configured_secret() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_cfg_secret");
 
     let tenant_id = TenantId::new_v7();

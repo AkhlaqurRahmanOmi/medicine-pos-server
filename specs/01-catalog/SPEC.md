@@ -177,6 +177,80 @@ lean copy reaches the phone and how it refreshes is **10 Sync**'s contract, not 
 |---|---|---|---|
 | **Q1** | **How does the one-time import of 30,671 products run?** Where the medex CSVs live, who runs it, whether it is a migration, a seed binary or an `xtask`, whether it is re-runnable, and whether the medex-id de-duplication and the monograph collapse (2,192 generics, 74 of which vary) belong in this crate or in a throwaway tool. `cargo xtask n catalogue` resolves to **Data Import Plan**, which [`../NOTION.map`](../NOTION.map) lists as *unwritten* with no page id. Product Specification §2 gives the data shape and the nine quality fixes, but not the mechanics. | The import tasks only — omitted from [`tasks.md`](tasks.md) by name. **Not Gate 2 for the catalogue surface:** no table, endpoint or policy below depends on the answer, and `medex_id` is declared by the data model either way | 2026-10-23 |
 
+**Answered — Q1, 2026-10-25.** The source files arrived as `Extra Docs/companies.csv` and
+`Extra Docs/medicines.csv`, so the mechanics are now settled. *Data Import Plan* in Notion is
+still unwritten; this section is the record until it is, and it is the **largest page↔repo gap
+module 01 has**.
+
+**It is an idempotent seeder, not a migration.** `crates/catalog/src/bin/seed.rs`, behind the
+crate's off-by-default `seed` feature so no other crate's dependency graph changes:
+
+```bash
+cargo run --release -p catalog --features seed --bin catalog-seed -- --dir "Extra Docs"
+```
+
+A migration was rejected outright: Article V.4 makes an applied migration immutable, and a
+136 MB load that may need re-running after a source correction is the opposite of immutable. An
+`xtask` was rejected too — that is the SDD runner, not a data tool. It lives inside module 01's
+own crate because the import is this module's, and because a new crate under `crates/` would
+fail Gate 0 (`tools/sdd-lint` maps every crate to a module via `MODULES.map`).
+
+**Idempotency is a property of the keys, not of a flag.** Each step reads what is already there,
+inserts only what is missing, and matches on a key the schema already enforces: `name` for the
+four lookups and for `generics` (`idx_generics_name`), `medex_id` or `name` for `companies`, and
+`(company_id, brand_name, strength, dosage_form_id)` for `products` — which is `idx_products_unique`,
+and is Product Spec §3's own rule that *"a product is identified by company + brand + strength +
+dosage form, never by brand name alone"*. The whole import is one transaction. Verified, not
+claimed: [`tasks.md`](tasks.md) Phase 9 runs the binary twice over a fixture and asserts the
+second run inserts nothing. `generic_monographs` is the one exception — it is re-written on every
+run, deliberately, so a corrected source file reaches the database.
+
+**It requires the owner role, and that is a finding rather than a convenience.**
+`m0005_catalog`'s `companies_insert`, `generics_insert` and `products_insert` policies all read
+`status = 'pending' AND submitted_by_tenant_id = app.current_tenant_id()`. There is **no platform
+INSERT path for the three submittable tables** — the review flow inserts as a tenant and then
+*updates* to `approved`. An imported row is `approved` with no submitting tenant, which no policy
+permits, so the seeder connects as `pos_owner` exactly as the migrator does. Article IV.1 is
+untouched: the *application* still connects as a non-owner. The same gap means **a super admin
+cannot add a product directly through the API at all** — [`BACKLOG.md`](BACKLOG.md) A6.
+
+**The nine quality fixes of Product Spec §2 are implemented there**, and the measured results
+agree with the page: 5,237 blank dosage forms recovered from the last word of `source_url`
+(tablet 2,557, capsule 706, injection 540 — the page's own counts), the one `source = 'test'` row
+and the `Test Pharma Ltd` company dropped, 24,626 prices parsed with 0 failures, every field
+trimmed, 219 duplicate rows collapsed keeping the most complete copy, and 2,177 monographs stored
+once per generic. **30,450 products, 2,192 generics, 353 companies, 664 therapeutic classes and
+148 dosage forms**, in about seven seconds.
+
+**Two places the file contradicts the page.** Both are measured, and both are in `INDEX.md`'s
+drift register:
+
+1. **`products.medex_id` is left NULL.** §2 says to de-duplicate on *"the medex numeric id inside
+   the URL"* and sizes it at *40 pairs*. In the real file **3,103 medex ids cover more than one
+   product** — differing by strength (990), dosage form (1,027) or brand name (219), because one
+   medex brand page lists several products. Only 867 are true duplicates. `idx_products_medex_id`
+   is UNIQUE, so writing that id would reject roughly 2,250 legitimate products. Either the index
+   is wrong about what a medex id identifies, or the column is. Until that is decided the column
+   stays empty and identity comes from the natural key, which costs the import its traceability
+   back to a source row.
+2. **`product_packs` is not seeded.** §4 says central defaults exist *"where the source data knows
+   the box size (about 80% of rows)"*. Measured, `(N's pack: …)` matches **15,162 of 30,670 rows —
+   49%** — across 40-plus formats, while *"Tenants define pack sizes"* is `[Decided]`. A guess
+   written into a table every pharmacy reads is worse than an empty one. `BACKLOG.md` A7.
+
+**`ingredients` and `generic_ingredients` are left empty.** The CSV has no ingredient column at
+all, and splitting `generic_name` on `+` produces 2,246 "ingredients" including *"23 herb formula
+to increase breast milk"* and *"20% Fat Emulsion"*. The two tables need a source this scrape does
+not contain. `BACKLOG.md` A8.
+
+**The monograph collapse rule is the page's**: the variant carried by the most products wins, and
+a tie breaks on the longest text so two runs cannot disagree. The page says 74 generics vary; the
+file has **75**.
+
+**The files are gitignored.** `medicines.csv` is 136 MB, above GitHub's 100 MB per-file limit, so
+committing it would make the repository unpushable. The seeder takes `--dir`, so the files are
+supplied out of band for a production run.
+
 **A spec with open questions blocking Gate 2 does not advance.** Q1–Q3 are each scoped to one
 endpoint or one task group, by the rule in [`../rules/lifecycle.md`](../rules/lifecycle.md)
 that a question blocks the gate it would change. The catalogue's tables, policies and read

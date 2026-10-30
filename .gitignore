@@ -6,3 +6,9 @@ docs/
 # compose.yaml mounts it. A missing source becomes a directory and the init no-ops.
 !docs/db/
 !docs/db/*.sql
+
+# The medex scrape the one-time catalogue import reads — `specs/01-catalog/SPEC.md` §5 Q1.
+# `medicines.csv` is 136 MB, above GitHub's 100 MB per-file hard limit, so committing it would
+# make the repository unpushable. The seeder takes `--dir`, so the files are supplied out of
+# band: kept here for a dev run, copied to the host for a production one.
+Extra Docs/

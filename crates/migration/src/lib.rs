@@ -5,6 +5,7 @@ pub mod m0002_tenancy;
 pub mod m0003_identity;
 pub mod m0004_tenancy_backlog;
 pub mod m0005_catalog;
+pub mod m0006_catalog_permissions;
 
 pub struct Migrator;
 
@@ -17,6 +18,7 @@ impl MigratorTrait for Migrator {
             Box::new(m0003_identity::Migration),
             Box::new(m0004_tenancy_backlog::Migration),
             Box::new(m0005_catalog::Migration),
+            Box::new(m0006_catalog_permissions::Migration),
         ]
     }
 }

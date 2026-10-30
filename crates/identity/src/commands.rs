@@ -1002,3 +1002,132 @@ pub async fn update_user(
 
     Ok(())
 }
+
+pub async fn reset_user_password(
+    tx: &Tx,
+    user_id: UserId,
+) -> Result<String, AppError> {
+    let tenant_id = tx.tenant_id()?;
+    let conn = tx.transaction()?;
+    let temp_password = format!("TempPass{}!", &Uuid::now_v7().to_string()[..8]);
+    let pwd_hash = password::hash_password(&temp_password)?;
+
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE users SET password_hash = $1, must_change_password = true, updated_at = now() WHERE id = $2 AND tenant_id = $3",
+        [pwd_hash.into(), user_id.as_uuid().into(), tenant_id.as_uuid().into()],
+    );
+    let res = conn
+        .execute_raw(stmt)
+        .await
+        .map_err(|e| AppError::internal("Failed to reset password", e.to_string()))?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::not_found("User not found"));
+    }
+    Ok(temp_password)
+}
+
+pub async fn change_password(
+    tx: &Tx,
+    user_id: UserId,
+    current_password: Option<&str>,
+    new_password: &str,
+) -> Result<(), AppError> {
+    let tenant_id = tx.tenant_id()?;
+    let conn = tx.transaction()?;
+
+    let select_stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT password_hash FROM users WHERE id = $1 AND tenant_id = $2",
+        [user_id.as_uuid().into(), tenant_id.as_uuid().into()],
+    );
+    let row = conn
+        .query_one_raw(select_stmt)
+        .await
+        .map_err(|e| AppError::internal("Failed to query user", e.to_string()))?
+        .ok_or_else(|| AppError::not_found("User not found"))?;
+
+    let current_hash: String = row
+        .try_get_by_index(0)
+        .map_err(|e| AppError::internal("DB error", e.to_string()))?;
+    if let Some(curr_pwd) = current_password {
+        if !password::verify_password_or_dummy(curr_pwd, Some(&current_hash)) {
+            return Err(AppError::unauthorized("Current password does not match"));
+        }
+    }
+
+    let new_hash = password::hash_password(new_password)?;
+    let update_stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE users SET password_hash = $1, must_change_password = false, updated_at = now() WHERE id = $2 AND tenant_id = $3",
+        [new_hash.into(), user_id.as_uuid().into(), tenant_id.as_uuid().into()],
+    );
+    conn.execute_raw(update_stmt)
+        .await
+        .map_err(|e| AppError::internal("Failed to update password", e.to_string()))?;
+
+    Ok(())
+}
+
+pub async fn revoke_session(
+    tx: &Tx,
+    cache: &Cache,
+    session_id: SessionId,
+) -> Result<(), AppError> {
+    let tenant_id = tx.tenant_id()?;
+    let conn = tx.transaction()?;
+
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE sessions SET revoked_at = now() WHERE id = $1 AND tenant_id = $2",
+        [session_id.as_uuid().into(), tenant_id.as_uuid().into()],
+    );
+    let res = conn
+        .execute_raw(stmt)
+        .await
+        .map_err(|e| AppError::internal("Failed to revoke session", e.to_string()))?;
+
+    if res.rows_affected() == 0 {
+        return Err(AppError::not_found("Session not found"));
+    }
+
+    revocation::revoke_session(cache, session_id, 86400).await?;
+    Ok(())
+}
+
+pub async fn create_platform_user<C: ConnectionTrait>(
+    conn: &C,
+    email: &str,
+    role: &str,
+) -> Result<Uuid, AppError> {
+    let user_id = Uuid::now_v7();
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        r#"INSERT INTO platform_users (id, email, role, totp_secret_encrypted, status, created_at, updated_at)
+           VALUES ($1, $2, $3, 'dummy_totp_secret_for_staff', 'active', now(), now())"#,
+        [user_id.into(), email.to_lowercase().into(), role.into()],
+    );
+    conn.execute_raw(stmt)
+        .await
+        .map_err(|e| AppError::internal("Failed to create platform user", e.to_string()))?;
+    Ok(user_id)
+}
+
+pub async fn end_impersonation_session<C: ConnectionTrait>(
+    conn: &C,
+    id: Uuid,
+) -> Result<(), AppError> {
+    let stmt = Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "UPDATE impersonation_sessions SET ended_at = now() WHERE id = $1",
+        [id.into()],
+    );
+    let res = conn
+        .execute_raw(stmt)
+        .await
+        .map_err(|e| AppError::internal("Failed to end impersonation session", e.to_string()))?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::not_found("Impersonation session not found"));
+    }
+    Ok(())
+}

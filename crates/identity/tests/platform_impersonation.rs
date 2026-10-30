@@ -98,14 +98,8 @@ async fn seed_platform_user(
 
 #[tokio::test]
 async fn platform_login_step_one_issues_no_access_token() {
-    let owner_db = match get_owner_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let owner_db = get_owner_db().await.expect("owner database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let user_id = Uuid::now_v7();
     let email = format!("plat_s1_{}@test.com", Uuid::now_v7());
@@ -153,14 +147,8 @@ async fn platform_login_step_one_issues_no_access_token() {
 
 #[tokio::test]
 async fn a_platform_user_without_totp_cannot_sign_in() {
-    let owner_db = match get_owner_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let owner_db = get_owner_db().await.expect("owner database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let user_id = Uuid::now_v7();
     let email = format!("plat_no_totp_{}@test.com", Uuid::now_v7());
@@ -212,8 +200,14 @@ async fn a_pharmacy_token_is_rejected_by_a_platform_route() {
         .layer(middleware::from_fn(platform_auth_middleware));
 
     // Create pharmacy token with audience pos:pharmacy
-    let pharmacy_token = encode_pharmacy_token(UserId::new_v7(), TenantId::new_v7(), JWT_SECRET, 900)
-        .expect("encode pharmacy token");
+    let pharmacy_token = encode_pharmacy_token(
+        UserId::new_v7(),
+        TenantId::new_v7(),
+        pos_core::ids::SessionId::new_v7(),
+        JWT_SECRET,
+        900,
+    )
+    .expect("encode pharmacy token");
 
     let req = Request::builder()
         .uri("/api/v1/platform/test")
@@ -270,14 +264,8 @@ async fn a_platform_token_is_rejected_by_a_pharmacy_route() {
 
 #[tokio::test]
 async fn platform_users_is_unreadable_with_a_tenant_context() {
-    let app_db = match get_app_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let app_db = get_app_db().await.expect("app database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let tenant_id = TenantId::new_v7();
     let user_id = UserId::new_v7();
@@ -301,14 +289,8 @@ async fn platform_users_is_unreadable_with_a_tenant_context() {
 
 #[tokio::test]
 async fn an_impersonation_session_is_read_only_by_default() {
-    let owner_db = match get_owner_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let owner_db = get_owner_db().await.expect("owner database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let platform_user_id = Uuid::now_v7();
     let tenant_id = TenantId::new_v7();
@@ -355,18 +337,9 @@ async fn an_impersonation_session_is_read_only_by_default() {
 
 #[tokio::test]
 async fn an_owner_reads_impersonation_of_their_own_pharmacy() {
-    let app_db = match get_app_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner_db = match get_owner_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let app_db = get_app_db().await.expect("app database required");
+    let owner_db = get_owner_db().await.expect("owner database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let platform_user_id = Uuid::now_v7();
     let tenant_a = TenantId::new_v7();
@@ -405,14 +378,8 @@ async fn an_owner_reads_impersonation_of_their_own_pharmacy() {
 
 #[tokio::test]
 async fn an_impersonated_write_names_both_identities() {
-    let owner_db = match get_owner_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let owner_db = get_owner_db().await.expect("owner database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let platform_user_id = Uuid::now_v7();
     let tenant_id = TenantId::new_v7();
@@ -451,14 +418,8 @@ async fn an_impersonated_write_names_both_identities() {
 /// gets two minutes rather than the hour this code used to hardcode at the call site.
 #[tokio::test]
 async fn the_impersonation_lifetime_comes_from_configuration() {
-    let owner_db = match get_owner_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let owner_db = get_owner_db().await.expect("owner database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let platform_user_id = Uuid::now_v7();
     let tenant_id = TenantId::new_v7();

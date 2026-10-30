@@ -68,15 +68,21 @@ async fn seed_branch(pool: &PgPool, tenant_id: TenantId, branch_id: BranchId, na
 }
 
 #[tokio::test]
+async fn the_suite_refuses_to_pass_without_a_database() {
+    use sea_orm::ConnectOptions;
+    let mut opt = ConnectOptions::new("postgres://pos_app:devpass@127.0.0.1:54329/nonexistent");
+    opt.connect_timeout(Duration::from_millis(200));
+    let conn = Database::connect(opt).await;
+    assert!(
+        conn.is_err(),
+        "Attempting to connect without a database must return an error and fail the test"
+    );
+}
+
+#[tokio::test]
 async fn rls_blocks_cross_tenant_read() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let tenant_a = TenantId::new_v7();
     let tenant_b = TenantId::new_v7();
@@ -209,14 +215,8 @@ async fn rls_blocks_cross_tenant_read() {
 
 #[tokio::test]
 async fn rls_blocks_cross_tenant_write() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let tenant_a = TenantId::new_v7();
     let tenant_b = TenantId::new_v7();
@@ -280,14 +280,8 @@ async fn rls_blocks_cross_tenant_write() {
 
 #[tokio::test]
 async fn a_role_cannot_be_granted_to_another_tenants_user() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_isolation_role");
 
     let tenant_a = TenantId::new_v7();
@@ -386,14 +380,8 @@ async fn a_role_cannot_be_granted_to_another_tenants_user() {
 
 #[tokio::test]
 async fn another_pharmacys_user_is_a_404() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
     let cache = get_cache("test_isolation_404");
 
     let tenant_a = TenantId::new_v7();
@@ -501,14 +489,8 @@ async fn another_pharmacys_user_is_a_404() {
 
 #[tokio::test]
 async fn app_is_platform_reads_across_tenants_in_identity() {
-    let db = match get_db().await {
-        Some(d) => d,
-        None => return,
-    };
-    let owner = match owner_pool().await {
-        Some(o) => o,
-        None => return,
-    };
+    let db = get_db().await.expect("database required");
+    let owner = owner_pool().await.expect("owner pool required");
 
     let tenant_a = TenantId::new_v7();
     let tenant_b = TenantId::new_v7();

@@ -21,6 +21,20 @@ utoipa-axum.workspace = true
 tracing.workspace = true
 axum.workspace = true
 
+# Only the one-time catalogue import needs these; the library never does.
+csv = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[features]
+# The `catalog-seed` binary. Off by default so the library's dependency graph is
+# unchanged for every other crate — `specs/01-catalog/tasks.md` Phase 9.
+seed = ["dep:csv", "dep:tokio"]
+
+[[bin]]
+name = "catalog-seed"
+path = "src/bin/seed.rs"
+required-features = ["seed"]
+
 [dev-dependencies]
 tokio.workspace = true
 tower.workspace = true

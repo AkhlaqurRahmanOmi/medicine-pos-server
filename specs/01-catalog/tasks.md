@@ -164,6 +164,76 @@
   - [x] Whole workspace is clean
         VERIFY: cargo clippy --workspace --all-targets -- -D warnings
 
+- [x] **Phase 8: the slugs this module declares are grantable**
+
+  Opened 2026-10-25 from [`BACKLOG.md`](BACKLOG.md) A1, after the module was already `[DONE]`.
+  `perms.rs` declared five slugs and `rest.rs` enforced four of them, but no migration ever
+  created the `permissions` rows — so `role_permissions`' FK and its
+  `check_role_permission_assignable()` trigger refused every grant and **every gated catalogue
+  endpoint was unreachable for every user, the owner included**. Declaring a slug and enforcing
+  it is not the same as a pharmacy being able to hold it, and nothing in Phases 1–7 asserted the
+  difference: Phase 7's *every endpoint enforces the permission its contract gives it* reads the
+  handler, not the database.
+
+  `m0006_catalog_permissions` is a **new** migration, not an edit to `m0005_catalog`
+  (Article V.4), and was applied by a human. It seeds the five rows with `catalog.review` and
+  `catalog.lookup.manage` at `is_tenant_assignable = false` `[D-78]`, adds the three assignable
+  slugs to the owner template `[D-79]`, backfills the owner roles of pharmacies that already
+  exist, and gives `catalog.view` to manager and cashier plus `catalog.submit` to manager, which
+  [`SPEC.md`](SPEC.md) §4 settles rather than leaving to judgement.
+
+  **Verified independently 2026-10-25** (Art. II.2) by an agent given only the module number:
+  the command exits 0, the test genuinely ran rather than matching nothing, and — the failure
+  mode that fails ~45 of module 03's assertions — it **fails loudly when the database is
+  unreachable** rather than passing vacuously, confirmed by running it against a dead port.
+  The claim was also checked in the live database independently of the test: five `catalog.*`
+  rows with the assignability `[D-78]` requires, the three templates, and the backfill reaching
+  74 tenants.
+
+  **What the command does not prove**, so the leaf no longer claims it. The test's slug list is
+  **hand-copied** — `permissions_seeded.rs` does not link the `catalog` crate at all, so a sixth
+  slug added to `perms.rs` with no `permissions` row would leave it green. That is this module's
+  own copy of the A1 bug, one level up. The backfill and the manager/cashier grants are true in
+  the database but asserted nowhere, which is exactly the half A1 said the template alone would
+  not reach. Filed as [`BACKLOG.md`](BACKLOG.md) A2–A4, uncounted.
+
+  - [x] The five slugs this module declares exist as `permissions` rows, and the assignable
+        three can actually be granted to a role
+        VERIFY: cargo test -p catalog every_catalog_slug_is_a_grantable_permission 2>&1 | grep -qE "^test .*every_catalog_slug_is_a_grantable_permission \.\.\. ok$"
+
+---
+
+- [x] **Phase 9: the one-time import — an idempotent seeder**
+
+  [`SPEC.md`](SPEC.md) §5 **Q1, answered 2026-10-25** when the medex scrape arrived as
+  `Extra Docs/`. A seeder rather than a migration because Article V.4 makes an applied migration
+  immutable and a 136 MB load may need re-running; inside module 01's own crate because the
+  import is this module's and a new crate under `crates/` would fail Gate 0. Behind the
+  off-by-default `seed` feature, so no other crate's dependency graph changes.
+
+  ```bash
+  cargo run --release -p catalog --features seed --bin catalog-seed -- --dir "Extra Docs"
+  ```
+
+  **Idempotency is the point**, so it is asserted twice over: once end to end by running the
+  binary twice, and once per rule by unit tests on the three pure functions that decide what a
+  row becomes. It needs the owner role — `m0005_catalog` has no platform INSERT policy for the
+  submittable tables, which is [`BACKLOG.md`](BACKLOG.md) A6.
+
+  - [x] Running the import twice inserts nothing the second time
+        VERIFY: cargo test -p catalog --features seed --test seed_idempotent 2>&1 | grep -qE "^test running_the_import_twice_inserts_nothing_the_second_time \.\.\. ok$"
+  - [x] A price in text survives as a reference MRP, and a blank dosage form is recovered
+        VERIFY: cargo test -p catalog --features seed --bin catalog-seed 2>&1 | grep -qE "^test result: ok\. 6 passed"
+  - [x] The library builds unchanged with the feature off, so `seed` costs other crates nothing
+        VERIFY: ! cargo tree -p catalog -e normal --no-default-features 2>&1 | grep -q "csv v"
+
+**Not asserted here, and recorded rather than hidden:** the real 30,450-row import is not a
+`VERIFY:` command. It needs a 136 MB file that is deliberately gitignored (`medicines.csv` is
+above GitHub's 100 MB per-file limit), so the assertions run against a four-row fixture that
+exercises the same code path. The full run was executed once against the dev database on
+2026-10-25 — 30,450 products, 2,192 generics, 353 companies — and re-run immediately to confirm
+0 inserted. That is evidence, not an assertion, and it is written down as such.
+
 ---
 
 ## Not in this list, deliberately
@@ -174,6 +244,7 @@
 | The lean catalogue copy the phone holds, and how it refreshes | **10 Sync**'s contract. This module owns the tables and the read endpoints, not the delivery |
 | Moving stock and sales onto the surviving product after a merge | **06 Inventory**, **07 Sales**, orchestrated by **09 Workflows** `[D-2]` `[D-97]`. A merge here is deliberately incomplete until those exist |
 | A pharmacy's own pack sizes and prices | **04 Pricing**. `product_packs` here is a central default with no price `[D-34]` |
+| An assertion that walks **every** crate's declared slugs against the seeded rows | The gap Phase 8 exposed is not this module's to close. `identity`'s `every_declared_permission_slug_has_a_row` reads its own `PERMISSIONS` const as *text*, so a module that declares slugs in its own `perms.rs` is invisible to it. A cross-crate assertion belongs to **00 Foundation** or **03 Identity**, whichever owns the slug registry — filed nowhere yet |
 
 ## On the assertion form
 
